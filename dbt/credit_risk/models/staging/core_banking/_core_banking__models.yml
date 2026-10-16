@@ -1,0 +1,31 @@
+version: 2
+
+models:
+  - name: stg_core_banking__customers
+    description: One row per customer. PII hashed (cpf_hash) or reduced to non-identifying attributes.
+    columns:
+      - name: customer_id
+        data_tests: [unique, not_null]
+      - name: cpf_hash
+        description: SHA-256 of salted, digits-only CPF. Joins the same person across systems without exposing the CPF.
+        data_tests: [unique, not_null]
+      - name: email_domain
+      - name: phone_area_code
+        description: Area code, the first 2 digits of the national number.
+
+  - name: stg_core_banking__credit_operations
+    description: One row per credit operation (contract).
+    columns:
+      - name: operation_id
+        data_tests: [unique, not_null]
+      - name: customer_id
+        description: Not tested for relationships here; orphans (customer quarantined in the lake) are expected and handled in marts.
+        data_tests: [not_null]
+
+  - name: stg_core_banking__installments
+    description: One row per installment of a credit operation's payment schedule.
+    columns:
+      - name: installment_id
+        data_tests: [unique, not_null]
+      - name: observation_date
+        data_tests: [not_null]

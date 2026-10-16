@@ -1,0 +1,4 @@
+credit_risk/target/
+credit_risk/dbt_packages/
+credit_risk/logs/
+credit_risk/.user.yml

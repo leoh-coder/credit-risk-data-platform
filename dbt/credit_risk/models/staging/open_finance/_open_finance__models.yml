@@ -1,0 +1,10 @@
+version: 2
+
+models:
+  - name: stg_open_finance__transactions
+    description: One row per account transaction shared through Open Finance at onboarding.
+    columns:
+      - name: transaction_id
+        data_tests: [unique, not_null]
+      - name: transacted_at
+        data_tests: [not_null]

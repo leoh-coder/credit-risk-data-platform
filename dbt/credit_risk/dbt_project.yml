@@ -1,0 +1,38 @@
+name: credit_risk
+version: "0.1.0"
+config-version: 2
+profile: credit_risk
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+clean-targets: ["target", "dbt_packages"]
+
+flags:
+  send_anonymous_usage_stats: false
+
+vars:
+  # Default: 90+ days past due within the first 12 installments.
+  pd_window_installments: 12
+  pd_default_dpd: 90
+  # Open Finance history shared at onboarding; anything on/after the application date is leakage.
+  open_finance_history_days: 90
+
+models:
+  credit_risk:
+    staging:
+      +schema: staging
+      +materialized: view
+    intermediate:
+      +schema: intermediate
+      +materialized: view
+    marts:
+      +schema: marts
+      +materialized: table
+      +grants:
+        select: ["analytics_reader"]
+
+seeds:
+  credit_risk:
+    +schema: staging

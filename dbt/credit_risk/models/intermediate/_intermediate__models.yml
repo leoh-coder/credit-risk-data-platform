@@ -1,0 +1,111 @@
+version: 2
+
+models:
+  - name: int_installments__delinquency
+    description: Installment-level delinquency (days past due) measured against the observation clock.
+    columns:
+      - name: installment_id
+        data_tests: [unique, not_null]
+      - name: dpd_bucket
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["current", "1-30", "31-60", "61-89", "90+"]
+
+  - name: int_credit_operations__performance
+    description: >
+      Default label per operation (pd_label 1/0/NULL) with its censoring reason (label_status).
+      Window and threshold come from the vars pd_window_installments / pd_default_dpd.
+    columns:
+      - name: operation_id
+        data_tests: [unique, not_null]
+      - name: label_status
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["labeled", "immature", "incomplete_schedule"]
+
+  - name: int_customers__open_finance_features
+    description: Pre-application behavioral features (prefix of_) per customer, one row per known customer.
+    columns:
+      - name: customer_id
+        data_tests: [unique, not_null]
+
+unit_tests:
+  - name: dpd_is_measured_against_the_observation_clock
+    model: int_installments__delinquency
+    given:
+      - input: ref('stg_core_banking__installments')
+        rows:
+          - {installment_id: paid_late,      due_date: 2026-03-01, payment_date: 2026-03-11, observation_date: 2026-10-15}
+          - {installment_id: paid_early,     due_date: 2026-03-01, payment_date: 2026-02-25, observation_date: 2026-10-15}
+          - {installment_id: unpaid_overdue, due_date: 2026-10-01, payment_date: null,       observation_date: 2026-10-15}
+          - {installment_id: unpaid_due_today, due_date: 2026-10-15, payment_date: null,     observation_date: 2026-10-15}
+          - {installment_id: not_due_yet,    due_date: 2026-11-01, payment_date: null,       observation_date: 2026-10-15}
+          - {installment_id: at_threshold,   due_date: 2026-07-17, payment_date: null,       observation_date: 2026-10-15}
+          - {installment_id: below_threshold, due_date: 2026-07-18, payment_date: null,      observation_date: 2026-10-15}
+    expect:
+      rows:
+        - {installment_id: paid_late,        days_past_due: 10, is_due: true,  dpd_bucket: "1-30"}
+        - {installment_id: paid_early,       days_past_due: 0,  is_due: true,  dpd_bucket: current}
+        - {installment_id: unpaid_overdue,   days_past_due: 14, is_due: true,  dpd_bucket: "1-30"}
+        - {installment_id: unpaid_due_today, days_past_due: 0,  is_due: true,  dpd_bucket: current}
+        - {installment_id: not_due_yet,      days_past_due: 0,  is_due: false, dpd_bucket: current}
+        - {installment_id: at_threshold,     days_past_due: 90, is_due: true,  dpd_bucket: "90+"}
+        - {installment_id: below_threshold,  days_past_due: 89, is_due: true,  dpd_bucket: "61-89"}
+
+  - name: pd_label_follows_the_censoring_rules
+    description: Window of 3 installments to keep fixtures small; observation date 2026-10-15.
+    model: int_credit_operations__performance
+    overrides:
+      vars: {pd_window_installments: 3, pd_default_dpd: 90}
+    given:
+      - input: ref('stg_core_banking__credit_operations')
+        rows:
+          - {operation_id: mature_good,          contract_date: 2025-01-01, installments_count: 3,  observed_at: 2026-10-15 23:59:59}
+          - {operation_id: mature_default,       contract_date: 2025-01-01, installments_count: 3,  observed_at: 2026-10-15 23:59:59}
+          - {operation_id: exactly_90_dpd,       contract_date: 2025-01-01, installments_count: 3,  observed_at: 2026-10-15 23:59:59}
+          - {operation_id: gap_no_default,      contract_date: 2025-01-01, installments_count: 3,  observed_at: 2026-10-15 23:59:59}
+          - {operation_id: gap_with_default,     contract_date: 2025-01-01, installments_count: 3,  observed_at: 2026-10-15 23:59:59}
+          - {operation_id: immature_default,     contract_date: 2026-09-01, installments_count: 24, observed_at: 2026-10-15 23:59:59}
+          - {operation_id: default_after_window, contract_date: 2025-01-01, installments_count: 24, observed_at: 2026-10-15 23:59:59}
+          - {operation_id: matures_today,        contract_date: 2026-04-17, installments_count: 3,  observed_at: 2026-10-15 23:59:59}
+          - {operation_id: matures_tomorrow,     contract_date: 2026-04-18, installments_count: 3,  observed_at: 2026-10-15 23:59:59}
+      - input: ref('int_installments__delinquency')
+        rows:
+          - {operation_id: mature_good,          installment_id: g1, installment_number: 1, days_past_due: 0}
+          - {operation_id: mature_good,          installment_id: g2, installment_number: 2, days_past_due: 10}
+          - {operation_id: mature_good,          installment_id: g3, installment_number: 3, days_past_due: 0}
+          - {operation_id: mature_default,       installment_id: d1, installment_number: 1, days_past_due: 0}
+          - {operation_id: mature_default,       installment_id: d2, installment_number: 2, days_past_due: 95}
+          - {operation_id: mature_default,       installment_id: d3, installment_number: 3, days_past_due: 120}
+          - {operation_id: exactly_90_dpd,       installment_id: x1, installment_number: 1, days_past_due: 0}
+          - {operation_id: exactly_90_dpd,       installment_id: x2, installment_number: 2, days_past_due: 90}
+          - {operation_id: exactly_90_dpd,       installment_id: x3, installment_number: 3, days_past_due: 0}
+          - {operation_id: gap_no_default,       installment_id: n1, installment_number: 1, days_past_due: 0}
+          - {operation_id: gap_no_default,       installment_id: n3, installment_number: 3, days_past_due: 0}
+          - {operation_id: gap_with_default,     installment_id: w1, installment_number: 1, days_past_due: 120}
+          - {operation_id: gap_with_default,     installment_id: w3, installment_number: 3, days_past_due: 0}
+          - {operation_id: immature_default,     installment_id: i1, installment_number: 1, days_past_due: 100}
+          - {operation_id: default_after_window, installment_id: a1, installment_number: 1, days_past_due: 0}
+          - {operation_id: default_after_window, installment_id: a2, installment_number: 2, days_past_due: 0}
+          - {operation_id: default_after_window, installment_id: a3, installment_number: 3, days_past_due: 0}
+          - {operation_id: default_after_window, installment_id: a9, installment_number: 9, days_past_due: 200}
+          - {operation_id: matures_today,        installment_id: t1, installment_number: 1, days_past_due: 0}
+          - {operation_id: matures_today,        installment_id: t2, installment_number: 2, days_past_due: 0}
+          - {operation_id: matures_today,        installment_id: t3, installment_number: 3, days_past_due: 0}
+          - {operation_id: matures_tomorrow,     installment_id: m1, installment_number: 1, days_past_due: 0}
+          - {operation_id: matures_tomorrow,     installment_id: m2, installment_number: 2, days_past_due: 0}
+          - {operation_id: matures_tomorrow,     installment_id: m3, installment_number: 3, days_past_due: 0}
+    expect:
+      rows:
+        - {operation_id: mature_good,          pd_label: 0,    label_status: labeled,             has_defaulted_to_date: false}
+        - {operation_id: mature_default,       pd_label: 1,    label_status: labeled,             has_defaulted_to_date: true}
+        - {operation_id: exactly_90_dpd,       pd_label: 1,    label_status: labeled,             has_defaulted_to_date: true}
+        - {operation_id: gap_no_default,       pd_label: null, label_status: incomplete_schedule, has_defaulted_to_date: false}
+        - {operation_id: gap_with_default,     pd_label: 1,    label_status: labeled,             has_defaulted_to_date: true}
+        - {operation_id: immature_default,     pd_label: null, label_status: immature,            has_defaulted_to_date: true}
+        - {operation_id: default_after_window, pd_label: 0,    label_status: labeled,             has_defaulted_to_date: false}
+        - {operation_id: matures_today,        pd_label: 0,    label_status: labeled,             has_defaulted_to_date: false}
+        - {operation_id: matures_tomorrow,     pd_label: null, label_status: immature,            has_defaulted_to_date: false}

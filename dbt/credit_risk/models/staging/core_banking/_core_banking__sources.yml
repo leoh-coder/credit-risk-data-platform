@@ -1,0 +1,31 @@
+version: 2
+
+sources:
+  - name: core_banking
+    description: >
+      Retail bank operational systems (KYC, loan origination, loan servicing), landed in the lake
+      behind the Pandera contract and loaded 1:1 into Postgres by the loader.
+    schema: raw
+    config:
+      loaded_at_field: _loaded_at
+      freshness:
+        warn_after: {count: 2, period: day}
+    tables:
+      - name: customers
+        description: Onboarding / KYC. Contains PII (cpf, full_name, email, phone_number).
+      - name: credit_operations
+        description: Loan origination. One row per contract granted on the reference date.
+      - name: installments
+        description: >
+          Loan servicing schedule. payment_date is NULL and amount_paid = 0 when the payment was not
+          observed by the extraction clock (_extracted_at): either delinquent or simply not due yet.
+
+  - name: open_finance
+    description: Account history shared through Open Finance at onboarding (before the application).
+    schema: raw
+    config:
+      loaded_at_field: _loaded_at
+      freshness:
+        warn_after: {count: 2, period: day}
+    tables:
+      - name: transactions
