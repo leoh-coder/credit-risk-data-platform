@@ -63,7 +63,7 @@ jobs:
         run: python -m pytest -q
 
   compose-smoke:
-    name: Compose smoke run (3-day backfill + load)
+    name: Compose smoke run (backfill, load, dbt build, freshness, docs)
     needs: lint-test
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -118,6 +118,37 @@ jobs:
         run: |
           docker compose run --rm loader run 2>&1 | tee load2.log
           grep -q "done: 0 loaded, 3 already up to date, 0 failed" load2.log
+
+      - name: Transform with dbt (models, unit tests, data tests, contracts)
+        run: docker compose run --rm --build dbt build
+
+      - name: Source freshness
+        run: docker compose run --rm dbt source freshness
+
+      - name: Generate dbt docs (single static HTML)
+        run: |
+          docker compose run --name dbt-docs-gen dbt docs generate --static
+          docker cp dbt-docs-gen:/app/credit_risk/target/static_index.html ./dbt-docs.html
+          docker rm dbt-docs-gen
+
+      - name: Upload dbt docs
+        uses: actions/upload-artifact@v7
+        with:
+          name: dbt-docs
+          path: dbt-docs.html
+          if-no-files-found: error
+
+      - name: Assert marts are the only layer analytics_reader can read
+        run: |
+          result=$(docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA -F " "' <<'SQL'
+          select
+            has_table_privilege('analytics_reader', 'marts.fct_credit_operations', 'SELECT'),
+            has_schema_privilege('analytics_reader', 'staging', 'USAGE'),
+            has_schema_privilege('analytics_reader', 'raw', 'USAGE');
+          SQL
+          )
+          echo "reads marts, uses staging, uses raw: $result"
+          test "$result" = "t f f"
 
       - name: Dump logs on failure
         if: failure()

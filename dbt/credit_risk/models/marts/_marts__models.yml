@@ -1,0 +1,430 @@
+version: 2
+
+# Gold interface consumed by BI and the PD model. Contracts are enforced: dbt refuses to build a mart
+# whose SQL does not produce exactly these columns and types, and Postgres enforces the constraints.
+
+models:
+  - name: dim_customers
+    description: Customer dimension (no PII) with pre-application Open Finance features, plus the unknown member.
+    config:
+      contract: {enforced: true}
+    data_tests:
+      - no_pii_patterns
+      - dbt_utils.expression_is_true:
+          name: dim_customers_adults_only
+          arguments: {expression: "is_unknown_member or age_at_registration between 18 and 100"}
+    columns:
+      - name: customer_key
+        description: "{{ doc('surrogate_key') }}"
+        data_type: text
+        constraints: [{type: primary_key}]
+        data_tests: [unique, not_null]
+      - name: customer_id
+        description: Natural key from the KYC system ('UNKNOWN' for the unknown member).
+        data_type: text
+        constraints: [{type: not_null}]
+        data_tests: [unique]
+      - name: registration_date
+        description: Onboarding date = credit application date.
+        data_type: date
+      - name: state_code
+        data_type: text
+      - name: phone_area_code
+        description: Area code only; the phone number itself never leaves raw.
+        data_type: text
+      - name: email_domain
+        description: E-mail domain only; the address itself never leaves raw.
+        data_type: text
+      - name: employment_type
+        data_type: text
+      - name: monthly_income
+        description: Declared monthly income (BRL).
+        data_type: numeric(18, 2)
+      - name: income_band
+        data_type: text
+        constraints: [{type: not_null}]
+        data_tests:
+          - accepted_values:
+              arguments: {values: ["< 2k", "2k-5k", "5k-10k", "10k+", "unknown"]}
+      - name: age_at_registration
+        data_type: integer
+      - name: of_tx_count
+        description: Open Finance transactions in the history window before the application.
+        data_type: bigint
+      - name: of_salary_deposit_count
+        data_type: bigint
+      - name: of_monthly_inflow
+        data_type: numeric(18, 2)
+      - name: of_monthly_outflow
+        data_type: numeric(18, 2)
+      - name: of_inflow_to_income_ratio
+        description: Observed monthly inflow / declared income (income-verification signal).
+        data_type: numeric(10, 4)
+      - name: of_betting_spend_share
+        description: Share of merchant spend on online betting.
+        data_type: numeric(10, 4)
+      - name: of_cash_withdrawal_share
+        description: Share of outflow taken as cash.
+        data_type: numeric(10, 4)
+      - name: is_unknown_member
+        description: "{{ doc('unknown_member') }}"
+        data_type: boolean
+        constraints: [{type: not_null}]
+      - name: age_band
+        data_type: text
+        constraints: [{type: not_null}]
+        data_tests:
+          - accepted_values:
+              arguments: {values: ["18-24", "25-34", "35-44", "45-54", "55-64", "65+", "unknown"]}
+
+  - name: dim_products
+    description: Product dimension from the product_catalog seed, plus the unknown member.
+    config:
+      contract: {enforced: true}
+    data_tests:
+      - no_pii_patterns
+    columns:
+      - name: product_key
+        description: "{{ doc('surrogate_key') }}"
+        data_type: text
+        constraints: [{type: primary_key}]
+        data_tests: [unique, not_null]
+      - name: product_type
+        data_type: text
+        constraints: [{type: not_null}]
+      - name: product_name
+        data_type: text
+        constraints: [{type: not_null}]
+      - name: is_payroll_deductible
+        description: Installments deducted straight from payroll.
+        data_type: boolean
+      - name: is_collateralized
+        data_type: boolean
+      - name: is_unknown_member
+        description: "{{ doc('unknown_member') }}"
+        data_type: boolean
+        constraints: [{type: not_null}]
+
+  - name: dim_date
+    description: Calendar dimension, one row per day, from the first contract year to the last due-date year.
+    config:
+      contract: {enforced: true}
+    columns:
+      - name: date_key
+        description: "{{ doc('date_key') }}"
+        data_type: integer
+        constraints: [{type: primary_key}]
+        data_tests: [unique, not_null]
+      - name: calendar_date
+        data_type: date
+        constraints: [{type: not_null}]
+      - name: year
+        data_type: integer
+      - name: quarter
+        data_type: integer
+      - name: month
+        data_type: integer
+      - name: month_name
+        data_type: text
+      - name: year_month
+        data_type: text
+      - name: day_of_month
+        data_type: integer
+      - name: day_of_week
+        description: ISO day of week (1 = Monday).
+        data_type: integer
+      - name: day_name
+        data_type: text
+      - name: is_weekend
+        data_type: boolean
+      - name: is_month_end
+        data_type: boolean
+
+  - name: fct_credit_operations
+    description: >
+      One row per credit operation (contract) with origination measures and the PD label.
+      Train models only on label_status = 'labeled' and customer_key <> '-1'.
+    config:
+      contract: {enforced: true}
+    data_tests:
+      - no_pii_patterns
+      - dq_rate_within_budget:
+          name: dq_budget_unknown_customer_warn
+          arguments: {bad_rows: "customer_key = '-1'", max_pct: "{{ var('dq_unknown_customer_warn_pct') }}"}
+          config: {severity: warn}
+      - dq_rate_within_budget:
+          name: dq_budget_unknown_customer_error
+          arguments: {bad_rows: "customer_key = '-1'", max_pct: "{{ var('dq_unknown_customer_error_pct') }}"}
+      - dq_rate_within_budget:
+          name: dq_budget_incomplete_window_warn
+          arguments: {bad_rows: "not is_window_complete", max_pct: "{{ var('dq_incomplete_window_warn_pct') }}"}
+          config: {severity: warn}
+      - dq_rate_within_budget:
+          name: dq_budget_incomplete_window_error
+          arguments: {bad_rows: "not is_window_complete", max_pct: "{{ var('dq_incomplete_window_error_pct') }}"}
+    columns:
+      - name: operation_id
+        description: Natural key of the contract (degenerate dimension).
+        data_type: text
+        constraints: [{type: primary_key}]
+        data_tests: [unique, not_null]
+      - name: customer_key
+        description: "{{ doc('unknown_member') }}"
+        data_type: text
+        constraints: [{type: not_null}]
+        data_tests:
+          - relationships:
+              arguments: {to: ref('dim_customers'), field: customer_key}
+      - name: product_key
+        data_type: text
+        constraints: [{type: not_null}]
+        data_tests:
+          - relationships:
+              arguments: {to: ref('dim_products'), field: product_key}
+      - name: contract_date_key
+        description: "{{ doc('date_key') }}"
+        data_type: integer
+        constraints: [{type: not_null}]
+        data_tests:
+          - relationships:
+              arguments: {to: ref('dim_date'), field: date_key}
+      - name: principal_amount
+        data_type: numeric(18, 2)
+        constraints: [{type: not_null}]
+      - name: interest_rate_monthly
+        data_type: numeric(10, 6)
+        constraints: [{type: not_null}]
+      - name: installments_count
+        data_type: integer
+        constraints: [{type: not_null}]
+      - name: installment_amount
+        data_type: numeric(18, 2)
+        constraints: [{type: not_null}]
+      - name: total_scheduled_amount
+        description: installments_count x installment_amount.
+        data_type: numeric(18, 2)
+      - name: bureau_score_at_origination
+        data_type: integer
+      - name: installment_to_income_ratio
+        description: Installment / declared monthly income (debt-service ratio). NULL for the unknown customer.
+        data_type: numeric(10, 4)
+      - name: window_installments
+        description: Installments in the label window = min(installments_count, pd_window_installments).
+        data_type: integer
+      - name: window_installments_present
+        description: Window installments that reached the warehouse (the rest were quarantined in the lake).
+        data_type: integer
+      - name: is_window_complete
+        data_type: boolean
+        constraints: [{type: not_null}]
+      - name: max_dpd_in_window
+        description: "{{ doc('days_past_due') }}"
+        data_type: integer
+      - name: has_defaulted_to_date
+        description: Default already observed (any label status). Use for monitoring, not for training.
+        data_type: boolean
+      - name: window_last_due_date
+        data_type: date
+      - name: is_mature
+        data_type: boolean
+        constraints: [{type: not_null}]
+      - name: pd_label
+        description: "{{ doc('pd_label') }}"
+        data_type: integer
+        data_tests:
+          - accepted_values:
+              arguments: {values: [0, 1], quote: false}
+      - name: label_status
+        description: "{{ doc('label_status') }}"
+        data_type: text
+        constraints: [{type: not_null}]
+        data_tests:
+          - accepted_values:
+              arguments: {values: ["labeled", "immature", "incomplete_schedule"]}
+      - name: batch_id
+        data_type: text
+      - name: observed_at
+        description: "{{ doc('observation_clock') }}"
+        data_type: timestamp
+
+  - name: dq_ingestion_daily
+    description: >
+      Ingestion data quality per reference_date x entity (latest load of each date): rows received,
+      valid and quarantined by the Pandera contract. Feeds the data-quality view of the dashboard.
+    config:
+      contract: {enforced: true}
+    data_tests:
+      - no_pii_patterns
+      - dbt_utils.expression_is_true:
+          name: dq_ingestion_counts_add_up
+          arguments: {expression: "rows_valid + rows_quarantined = rows_received"}
+      - dbt_utils.expression_is_true:
+          name: dq_ingestion_window_counts_add_up
+          arguments: {expression: "rows_quarantined_7d <= rows_received_7d and dates_in_window_7d between 1 and 7"}
+      # Budget on the rolling 7-date rate, not the noisy daily rate.
+      - dbt_utils.expression_is_true:
+          name: dq_budget_quarantine_warn
+          arguments: {expression: "quarantine_pct_7d <= {{ var('dq_quarantine_warn_pct') }}"}
+          config: {severity: warn}
+      - dbt_utils.expression_is_true:
+          name: dq_budget_quarantine_error
+          arguments: {expression: "quarantine_pct_7d <= {{ var('dq_quarantine_error_pct') }}"}
+    columns:
+      - name: ingestion_quality_key
+        description: "{{ doc('surrogate_key') }}"
+        data_type: text
+        constraints: [{type: primary_key}]
+        data_tests: [unique, not_null]
+      - name: reference_date_key
+        description: "{{ doc('date_key') }}"
+        data_type: integer
+        constraints: [{type: not_null}]
+        data_tests:
+          - relationships:
+              arguments: {to: ref('dim_date'), field: date_key}
+      - name: reference_date
+        data_type: date
+        constraints: [{type: not_null}]
+      - name: entity
+        data_type: text
+        constraints: [{type: not_null}]
+        data_tests:
+          - accepted_values:
+              arguments: {values: ["customers", "credit_operations", "installments", "transactions"]}
+      - name: rows_received
+        data_type: integer
+        constraints: [{type: not_null}]
+      - name: rows_valid
+        data_type: integer
+        constraints: [{type: not_null}]
+      - name: rows_quarantined
+        data_type: integer
+        constraints: [{type: not_null}]
+      - name: quarantine_pct
+        description: >
+          Daily rows_quarantined / rows_received, in percent (informative; noisy on small batches).
+          The ingestion circuit breaker rejects a batch above 10% AND more than 5 invalid rows.
+        data_type: numeric(6, 2)
+      - name: rows_received_7d
+        description: Rows received over the last 7 loaded dates of this entity (window function).
+        data_type: integer
+        constraints: [{type: not_null}]
+      - name: rows_quarantined_7d
+        data_type: integer
+        constraints: [{type: not_null}]
+      - name: dates_in_window_7d
+        description: Loaded dates in the window (fewer than 7 at the start of the history).
+        data_type: integer
+        constraints: [{type: not_null}]
+      - name: quarantine_pct_7d
+        description: rows_quarantined_7d / rows_received_7d, in percent. The quarantine DQ budget applies here.
+        data_type: numeric(6, 2)
+      - name: batch_id
+        data_type: text
+      - name: contract_version
+        description: Pandera contract version that validated the batch.
+        data_type: text
+      - name: loaded_at
+        data_type: timestamp
+
+  - name: fct_installments
+    description: One row per installment with delinquency measures (collections / aging).
+    config:
+      contract: {enforced: true}
+    data_tests:
+      - no_pii_patterns
+      - dbt_utils.expression_is_true:
+          name: fct_installments_overdue_within_due
+          arguments: {expression: "amount_overdue between 0 and amount_due"}
+    columns:
+      - name: installment_id
+        data_type: text
+        constraints: [{type: primary_key}]
+        data_tests: [unique, not_null]
+      - name: operation_id
+        description: Degenerate dimension; may not exist in fct_credit_operations if the operation was quarantined.
+        data_type: text
+        constraints: [{type: not_null}]
+      - name: customer_key
+        description: "{{ doc('unknown_member') }}"
+        data_type: text
+        constraints: [{type: not_null}]
+        data_tests:
+          - relationships:
+              arguments: {to: ref('dim_customers'), field: customer_key}
+      - name: product_key
+        data_type: text
+        constraints: [{type: not_null}]
+        data_tests:
+          - relationships:
+              arguments: {to: ref('dim_products'), field: product_key}
+      - name: due_date_key
+        description: "{{ doc('date_key') }}"
+        data_type: integer
+        constraints: [{type: not_null}]
+        data_tests:
+          - relationships:
+              arguments: {to: ref('dim_date'), field: date_key}
+      - name: payment_date_key
+        description: NULL while the installment is unpaid.
+        data_type: integer
+        data_tests:
+          - relationships:
+              arguments: {to: ref('dim_date'), field: date_key}
+      - name: installment_number
+        data_type: integer
+        constraints: [{type: not_null}]
+      - name: amount_due
+        data_type: numeric(18, 2)
+        constraints: [{type: not_null}]
+      - name: amount_paid
+        data_type: numeric(18, 2)
+        constraints: [{type: not_null}]
+      - name: amount_overdue
+        description: amount_due when the installment is due and unpaid, else 0.
+        data_type: numeric(18, 2)
+        constraints: [{type: not_null}]
+      - name: is_paid
+        data_type: boolean
+      - name: is_due
+        data_type: boolean
+      - name: days_past_due
+        description: "{{ doc('days_past_due') }}"
+        data_type: integer
+        constraints: [{type: not_null}]
+      - name: dpd_bucket
+        data_type: text
+        constraints: [{type: not_null}]
+      - name: observation_date
+        description: "{{ doc('observation_clock') }}"
+        data_type: date
+        constraints: [{type: not_null}]
+
+unit_tests:
+  - name: quarantine_budget_uses_latest_load_and_last_7_loaded_dates
+    description: >
+      Eight loaded dates of one entity (10 rows each). 2026-01-01 was loaded twice: the older load
+      (9 quarantined) must be ignored. The 8th window covers dates 2..8 only.
+    model: dq_ingestion_daily
+    given:
+      - input: source('loader', 'lake_loads')
+        rows:
+          - {reference_date: 2026-01-01, finished_at: 2026-10-01 00:00:00, manifest_entities: '{"customers": {"rows_received": 10, "rows_valid": 1, "rows_quarantined": 9}}'}
+          - {reference_date: 2026-01-01, finished_at: 2026-10-02 00:00:00, manifest_entities: '{"customers": {"rows_received": 10, "rows_valid": 9, "rows_quarantined": 1}}'}
+          - {reference_date: 2026-01-02, finished_at: 2026-10-02 00:00:00, manifest_entities: '{"customers": {"rows_received": 10, "rows_valid": 9, "rows_quarantined": 1}}'}
+          - {reference_date: 2026-01-03, finished_at: 2026-10-02 00:00:00, manifest_entities: '{"customers": {"rows_received": 10, "rows_valid": 9, "rows_quarantined": 1}}'}
+          - {reference_date: 2026-01-04, finished_at: 2026-10-02 00:00:00, manifest_entities: '{"customers": {"rows_received": 10, "rows_valid": 9, "rows_quarantined": 1}}'}
+          - {reference_date: 2026-01-05, finished_at: 2026-10-02 00:00:00, manifest_entities: '{"customers": {"rows_received": 10, "rows_valid": 9, "rows_quarantined": 1}}'}
+          - {reference_date: 2026-01-06, finished_at: 2026-10-02 00:00:00, manifest_entities: '{"customers": {"rows_received": 10, "rows_valid": 9, "rows_quarantined": 1}}'}
+          - {reference_date: 2026-01-07, finished_at: 2026-10-02 00:00:00, manifest_entities: '{"customers": {"rows_received": 10, "rows_valid": 9, "rows_quarantined": 1}}'}
+          - {reference_date: 2026-01-08, finished_at: 2026-10-02 00:00:00, manifest_entities: '{"customers": {"rows_received": 10, "rows_valid": 7, "rows_quarantined": 3}}'}
+    expect:
+      rows:
+        - {reference_date: 2026-01-01, rows_quarantined: 1, rows_received_7d: 10, rows_quarantined_7d: 1, dates_in_window_7d: 1, quarantine_pct_7d: 10.00}
+        - {reference_date: 2026-01-02, rows_quarantined: 1, rows_received_7d: 20, rows_quarantined_7d: 2, dates_in_window_7d: 2, quarantine_pct_7d: 10.00}
+        - {reference_date: 2026-01-03, rows_quarantined: 1, rows_received_7d: 30, rows_quarantined_7d: 3, dates_in_window_7d: 3, quarantine_pct_7d: 10.00}
+        - {reference_date: 2026-01-04, rows_quarantined: 1, rows_received_7d: 40, rows_quarantined_7d: 4, dates_in_window_7d: 4, quarantine_pct_7d: 10.00}
+        - {reference_date: 2026-01-05, rows_quarantined: 1, rows_received_7d: 50, rows_quarantined_7d: 5, dates_in_window_7d: 5, quarantine_pct_7d: 10.00}
+        - {reference_date: 2026-01-06, rows_quarantined: 1, rows_received_7d: 60, rows_quarantined_7d: 6, dates_in_window_7d: 6, quarantine_pct_7d: 10.00}
+        - {reference_date: 2026-01-07, rows_quarantined: 1, rows_received_7d: 70, rows_quarantined_7d: 7, dates_in_window_7d: 7, quarantine_pct_7d: 10.00}
+        - {reference_date: 2026-01-08, rows_quarantined: 3, rows_received_7d: 70, rows_quarantined_7d: 9, dates_in_window_7d: 7, quarantine_pct_7d: 12.86}

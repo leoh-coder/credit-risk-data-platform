@@ -1,0 +1,14 @@
+version: 2
+
+sources:
+  - name: loader
+    description: Load-control tables written by the loader job (lake -> raw).
+    schema: audit
+    tables:
+      - name: lake_loads
+        description: >
+          One row per committed load of a lake reference_date. rows_loaded = rows written to raw;
+          manifest_entities = the lake manifest's per-entity counts (received / valid / quarantined).
+        columns:
+          - name: load_id
+            data_tests: [unique, not_null]

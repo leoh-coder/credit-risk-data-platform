@@ -27,13 +27,14 @@ aggregated as (
 
     select
         customer_id,
+        -- SUM(CASE ...) instead of Postgres FILTER (WHERE ...): portable (e.g. Redshift lacks FILTER)
         count(*)                                                                    as tx_count,
-        sum(amount) filter (where direction = 'credit')                             as inflow_amount,
-        sum(amount) filter (where direction = 'debit')                              as outflow_amount,
-        count(*) filter (where transaction_type = 'salary_deposit')                 as salary_deposit_count,
-        sum(amount) filter (where merchant_category = 'betting')                    as betting_amount,
-        sum(amount) filter (where merchant_category is not null)                    as merchant_spend_amount,
-        sum(amount) filter (where transaction_type = 'cash_withdrawal')             as cash_withdrawal_amount
+        sum(case when direction = 'credit' then amount end)                         as inflow_amount,
+        sum(case when direction = 'debit' then amount end)                          as outflow_amount,
+        sum(case when transaction_type = 'salary_deposit' then 1 else 0 end)        as salary_deposit_count,
+        sum(case when merchant_category = 'betting' then amount end)                as betting_amount,
+        sum(case when merchant_category is not null then amount end)                as merchant_spend_amount,
+        sum(case when transaction_type = 'cash_withdrawal' then amount end)         as cash_withdrawal_amount
     from transactions
     group by customer_id
 

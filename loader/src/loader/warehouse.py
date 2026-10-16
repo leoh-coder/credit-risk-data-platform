@@ -36,6 +36,11 @@ AUDIT_DDL = (
     "CREATE INDEX IF NOT EXISTS lake_loads_reference_date_idx "
     "ON audit.lake_loads (reference_date, finished_at)",
     "COMMENT ON TABLE audit.lake_loads IS 'One row per committed load of a lake reference_date into raw'",
+    # Idempotent migration: tables created before this column existed get it on the next run.
+    "ALTER TABLE audit.lake_loads ADD COLUMN IF NOT EXISTS manifest_entities jsonb",
+    "COMMENT ON COLUMN audit.lake_loads.manifest_entities IS "
+    "'Per-entity counts from the lake manifest (received/valid/quarantined); "
+    "NULL for loads before 2026-10-16'",
 )
 
 
@@ -55,6 +60,25 @@ class Warehouse:
         for statement in AUDIT_DDL:
             self.con.execute(f"CALL postgres_execute('pg', {quote_literal(statement)})")
         self.con.execute("CALL pg_clear_cache()")  # let DuckDB see a table it did not create itself
+
+    def ensure_raw_indexes(self, entities) -> None:
+        """Index raw.<entity>(_reference_date): every load filters on it (DELETE, reconciliation).
+
+        Without it each date is a sequential scan of an ever-growing table: quadratic over a backfill.
+        Runs outside the per-date transaction (postgres_execute uses its own connection) and is
+        idempotent, so it covers new tables and tables created by an older loader alike.
+        """
+        for entity in entities:
+            name = safe_identifier(entity)
+            if self._table_exists(name):
+                ddl = f"CREATE INDEX IF NOT EXISTS {name}__reference_date_idx ON raw.{name} (_reference_date)"
+                self.con.execute(f"CALL postgres_execute('pg', {quote_literal(ddl)})")
+
+    def raw_tables(self) -> list[str]:
+        rows = self.con.execute(
+            "SELECT table_name FROM duckdb_tables() WHERE database_name = 'pg' AND schema_name = 'raw'"
+        ).fetchall()
+        return [row[0] for row in rows]
 
     def loaded_versions(self) -> dict[date, str]:
         """reference_date -> manifest_sha256 of its latest successful load."""
@@ -123,7 +147,9 @@ class Warehouse:
         self, load_id: str, batch: CommittedBatch, rows: dict[str, int], started_at: datetime
     ) -> None:
         self.con.execute(
-            "INSERT INTO pg.audit.lake_loads VALUES (?::UUID, ?, ?, ?, ?, ?::JSON, ?, ?)",
+            "INSERT INTO pg.audit.lake_loads (load_id, reference_date, batch_id, manifest_sha256, "
+            "contract_version, rows_loaded, manifest_entities, started_at, finished_at) "
+            "VALUES (?::UUID, ?, ?, ?, ?, ?::JSON, ?::JSON, ?, ?)",
             [
                 load_id,
                 batch.reference_date,
@@ -131,6 +157,7 @@ class Warehouse:
                 batch.manifest_sha256,
                 batch.manifest["contract_version"],
                 json.dumps(rows),
+                json.dumps(batch.entities),
                 started_at,
                 _utcnow(),
             ],

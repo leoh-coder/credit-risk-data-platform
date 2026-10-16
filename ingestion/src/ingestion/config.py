@@ -30,7 +30,7 @@ class Settings(BaseSettings):
 
     # --- Generator -----------------------------------------------------------
     seed: int = 42
-    customers_per_batch: int = Field(default=150, ge=1, le=100_000)
+    customers_per_batch: int = Field(default=150, ge=1, le=2_000)  # CPF scheme caps a batch at 2,500
     history_days: int = Field(default=90, ge=7, le=365)
     dirty_rate: float = Field(default=0.02, ge=0.0, le=0.5)
 

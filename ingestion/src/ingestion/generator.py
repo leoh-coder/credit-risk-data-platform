@@ -32,7 +32,13 @@ import numpy as np
 import pandas as pd
 from faker import Faker
 
-GENERATOR_VERSION = "1.0.0"
+GENERATOR_VERSION = "1.1.0"  # 1.1.0: unique synthetic CPFs (Faker's collided)
+
+# Faker's pt_BR cpf() draws 9 *distinct* digits: only 10!/1! ~ 3.6 M values, so ~1 in 40 customers
+# shared a CPF at 25 k customers. CPFs now come from a per-(date, row) sequence scrambled by a
+# bijection mod 10^9 (odd multiplier, not divisible by 5), unique within any 10,000-day window.
+_CPF_MULTIPLIER = 7_919_239
+MAX_CUSTOMERS_PER_BATCH = 2_500  # with rows 1..2_500 no sequence maps to an invalid repdigit CPF
 
 # Approximate population share per Brazilian state (IBGE-inspired, normalized below).
 STATE_WEIGHTS: dict[str, float] = {
@@ -125,6 +131,25 @@ class BatchContext:
         return pd.Timestamp(datetime.combine(self.as_of, time(23, 59, 59)))
 
 
+def _with_cpf_check_digits(base: str) -> str:
+    digits = [int(c) for c in base]
+    for size in (9, 10):
+        remainder = sum(d * w for d, w in zip(digits, range(size + 1, 1, -1), strict=True)) % 11
+        digits.append(0 if remainder < 2 else 11 - remainder)
+    return "".join(map(str, digits))
+
+
+def synthetic_cpfs(reference_date: date, n: int) -> list[str]:
+    if n > MAX_CUSTOMERS_PER_BATCH:
+        raise ValueError(f"at most {MAX_CUSTOMERS_PER_BATCH} customers per batch (CPF scheme), got {n}")
+    cpfs = []
+    for row in range(1, n + 1):
+        sequence = (reference_date.toordinal() % 10_000) * 100_000 + row
+        full = _with_cpf_check_digits(f"{sequence * _CPF_MULTIPLIER % 1_000_000_000:09d}")
+        cpfs.append(f"{full[:3]}.{full[3:6]}.{full[6:9]}-{full[9:]}")
+    return cpfs
+
+
 def _sigmoid(x: np.ndarray) -> np.ndarray:
     return 1.0 / (1.0 + np.exp(-x))
 
@@ -190,7 +215,7 @@ def generate_batch(
     customers = pd.DataFrame(
         {
             "customer_id": [f"CUS{reference_date:%Y%m%d}{i:05d}" for i in range(n)],
-            "cpf": [fake.cpf() for _ in range(n)],
+            "cpf": synthetic_cpfs(reference_date, n),
             "full_name": names,
             "email": [fake.free_email() for _ in range(n)],
             "phone_number": [fake.cellphone_number() for _ in range(n)],

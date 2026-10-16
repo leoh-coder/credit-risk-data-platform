@@ -126,7 +126,9 @@ class ValidationResult:
         return len(self.quarantine) / total if total else 0.0
 
 
-def validate_entity(entity: str, df: pd.DataFrame, max_invalid_ratio: float = 0.10) -> ValidationResult:
+def validate_entity(
+    entity: str, df: pd.DataFrame, max_invalid_ratio: float = 0.10, min_invalid_rows: int = 5
+) -> ValidationResult:
     contract = CONTRACTS[entity]
     df = df.reset_index(drop=True)
 
@@ -151,8 +153,11 @@ def validate_entity(entity: str, df: pd.DataFrame, max_invalid_ratio: float = 0.
         failures = failures[~drop]
         is_dup_check = is_dup_check[~drop]
 
+    # Pandera reports a DataFrame-wide check once per column; it is one rule about the whole row.
+    is_row_check = failures["schema_context"] == "DataFrameSchema"
+    scope = failures["column"].astype(str).where(~is_row_check, "row")
     reasons = (
-        (failures["column"].astype(str) + ":" + failures["check"].astype(str))
+        (scope + ":" + failures["check"].astype(str))
         .groupby(failures["index"])
         .agg(lambda s: ";".join(sorted(set(s))))
     )
@@ -160,9 +165,11 @@ def validate_entity(entity: str, df: pd.DataFrame, max_invalid_ratio: float = 0.
     valid = contract.validate(df.drop(index=reasons.index), lazy=True)
     result = ValidationResult(entity, valid, quarantine)
 
-    if result.invalid_ratio > max_invalid_ratio:
+    # Both conditions: on small batches a handful of bad rows alone would exceed the ratio.
+    if result.invalid_ratio > max_invalid_ratio and len(result.quarantine) > min_invalid_rows:
         raise ContractViolationError(
-            f"[{entity}] {result.invalid_ratio:.1%} of rows failed the contract "
-            f"(error budget: {max_invalid_ratio:.0%}). Rejecting the whole batch."
+            f"[{entity}] {result.invalid_ratio:.1%} of rows ({len(result.quarantine)}) failed the contract "
+            f"(error budget: {max_invalid_ratio:.0%} and more than {min_invalid_rows} rows). "
+            "Rejecting the whole batch."
         )
     return result

@@ -31,7 +31,12 @@ windows as (
         operation_id,
         contract_date,
         observed_at::date                                           as observation_date,
-        least(installments_count, {{ window_size }})                as window_installments
+        least(installments_count, {{ window_size }})                as window_installments,
+        -- installment k is due k months after the contract; month arithmetic clamps to the month end,
+        -- so it never lands earlier than the source schedule and maturity is never declared too early
+        cast({{ dbt.dateadd(
+            'month', 'least(installments_count, ' ~ window_size ~ ')', 'contract_date'
+        ) }} as date)                                               as window_last_due_date
     from operations
 
 ),
@@ -59,12 +64,9 @@ flags as (
         p.window_installments_present = w.window_installments      as is_window_complete,
         p.max_dpd_in_window,
         p.max_dpd_in_window >= {{ threshold }}                      as has_defaulted_to_date,
-        -- installment k is due k months after the contract; Postgres month arithmetic never lands
-        -- earlier than the source schedule, so maturity is never declared too early
-        (w.contract_date + make_interval(months => w.window_installments))::date
-                                                                    as window_last_due_date,
-        (w.contract_date + make_interval(months => w.window_installments))::date
-            + {{ threshold }} <= w.observation_date                 as is_mature
+        w.window_last_due_date,
+        cast({{ dbt.dateadd('day', threshold, 'w.window_last_due_date') }} as date)
+            <= w.observation_date                                   as is_mature
     from windows as w
     inner join window_performance as p using (operation_id)
 

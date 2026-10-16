@@ -11,15 +11,31 @@ models:
           - accepted_values:
               arguments:
                 values: ["current", "1-30", "31-60", "61-89", "90+"]
+      - name: days_past_due
+        description: "{{ doc('days_past_due') }}"
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0}
 
   - name: int_credit_operations__performance
     description: >
       Default label per operation (pd_label 1/0/NULL) with its censoring reason (label_status).
       Window and threshold come from the vars pd_window_installments / pd_default_dpd.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          name: pd_label_set_iff_labeled
+          arguments: {expression: "(pd_label is not null) = (label_status = 'labeled')"}
+      - dbt_utils.expression_is_true:
+          name: pd_label_default_was_observed
+          arguments: {expression: "pd_label is distinct from 1 or has_defaulted_to_date"}
     columns:
       - name: operation_id
         data_tests: [unique, not_null]
+      - name: pd_label
+        description: "{{ doc('pd_label') }}"
       - name: label_status
+        description: "{{ doc('label_status') }}"
         data_tests:
           - not_null
           - accepted_values:

@@ -19,6 +19,20 @@ vars:
   # Open Finance history shared at onboarding; anything on/after the application date is leakage.
   open_finance_history_days: 90
 
+  # Data-quality budgets (percent of rows). Above *_warn the build warns; above *_error it fails.
+  dq_unknown_customer_warn_pct: 0
+  dq_unknown_customer_error_pct: 5
+  dq_incomplete_window_warn_pct: 10
+  dq_incomplete_window_error_pct: 30
+  dq_quarantine_warn_pct: 5
+  dq_quarantine_error_pct: 10
+
+data_tests:
+  credit_risk:
+    # Keep the offending rows of every failing test, queryable in the audit schema.
+    +store_failures: true
+    +schema: audit
+
 models:
   credit_risk:
     staging:

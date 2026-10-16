@@ -66,6 +66,7 @@ def run(settings: Settings) -> RunReport:
     try:
         lake, warehouse = Lake(con, settings.lake_root), Warehouse(con)
         warehouse.ensure_audit_table()
+        warehouse.ensure_raw_indexes(warehouse.raw_tables())
         loaded_versions = warehouse.loaded_versions()
 
         for day in lake.committed_dates():
@@ -81,6 +82,7 @@ def run(settings: Settings) -> RunReport:
                 logger.error("date=%s ROLLED BACK, stays pending: %s", day, exc)
                 report.failed.append(day)
                 continue
+            warehouse.ensure_raw_indexes(batch.entities)  # tables created by this load get theirs now
             report.loaded.append(day)
             summary = " ".join(f"{entity}={n}" for entity, n in rows.items())
             logger.info("date=%s batch=%s loaded: %s", day, batch.batch_id, summary)

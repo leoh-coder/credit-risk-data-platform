@@ -3,29 +3,98 @@ version: 2
 models:
   - name: stg_core_banking__customers
     description: One row per customer. PII hashed (cpf_hash) or reduced to non-identifying attributes.
+    data_tests:
+      - no_pii_patterns
     columns:
       - name: customer_id
         data_tests: [unique, not_null]
       - name: cpf_hash
         description: SHA-256 of salted, digits-only CPF. Joins the same person across systems without exposing the CPF.
-        data_tests: [unique, not_null]
+        data_tests:
+          - unique
+          - not_null
+          - dbt_utils.expression_is_true:
+              arguments: {expression: "~ '^[0-9a-f]{64}$'"}
       - name: email_domain
+        data_tests: [not_null]
       - name: phone_area_code
-        description: Area code, the first 2 digits of the national number.
+        description: Area code, the first 2 digits of the national number. NULL means an unknown phone format.
+        data_tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              arguments: {expression: "~ '^[1-9][1-9]$'"}
+      - name: state_code
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["SP", "MG", "RJ", "BA", "PR", "RS", "PE", "CE", "PA", "SC", "GO", "MA", "AM", "ES",
+                         "PB", "RN", "MT", "AL", "PI", "DF", "MS", "SE", "RO", "TO", "AC", "AP", "RR"]
+      - name: employment_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["clt", "public_servant", "self_employed", "retired", "informal"]
+      - name: monthly_income
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0, inclusive: false}
+      - name: birth_date
+        data_tests: [not_null]
 
   - name: stg_core_banking__credit_operations
-    description: One row per credit operation (contract).
+    description: One row per credit operation (contract). Money cast to numeric(18,2), rate to numeric(10,6).
     columns:
       - name: operation_id
         data_tests: [unique, not_null]
       - name: customer_id
         description: Not tested for relationships here; orphans (customer quarantined in the lake) are expected and handled in marts.
         data_tests: [not_null]
+      - name: product_type
+        data_tests:
+          - not_null
+          - relationships:
+              arguments: {to: ref('product_catalog'), field: product_type}
+      - name: principal_amount
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0, inclusive: false}
+      - name: interest_rate_monthly
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0, max_value: 0.15, inclusive: true}
+      - name: installments_count
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 1, max_value: 120}
+      - name: bureau_score_at_origination
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0, max_value: 1000}
 
   - name: stg_core_banking__installments
     description: One row per installment of a credit operation's payment schedule.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments: {combination_of_columns: ["operation_id", "installment_number"]}
+      - dbt_utils.expression_is_true:
+          name: installments_paid_iff_amount_paid
+          arguments: {expression: "(payment_date is null) = (amount_paid = 0)"}
+      - dbt_utils.expression_is_true:
+          name: installments_never_overpaid
+          arguments: {expression: "amount_paid <= amount_due"}
+      - dbt_utils.expression_is_true:
+          name: installments_no_payment_after_observation
+          arguments: {expression: "payment_date is null or payment_date <= observation_date"}
     columns:
       - name: installment_id
         data_tests: [unique, not_null]
       - name: observation_date
+        description: "{{ doc('observation_clock') }}"
         data_tests: [not_null]
+      - name: payment_date
+        description: NULL when no payment was observed by the observation clock (delinquent or not yet due).
+      - name: amount_due
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0, inclusive: false}

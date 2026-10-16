@@ -1,9 +1,9 @@
-from datetime import date
+from datetime import date, timedelta
 
 import pandas as pd
 import pytest
 
-from ingestion.generator import generate_batch
+from ingestion.generator import MAX_CUSTOMERS_PER_BATCH, generate_batch, synthetic_cpfs
 from tests.conftest import AS_OF, REFERENCE_DATE
 
 
@@ -44,6 +44,35 @@ def test_behavioral_history_precedes_application(clean_batch):
 def test_latent_risk_is_not_leaked(clean_batch):
     for df in clean_batch.values():
         assert not {"z", "latent_risk", "will_default"} & set(df.columns)
+
+
+def _cpf_is_valid(cpf: str) -> bool:
+    digits = [int(c) for c in cpf if c.isdigit()]
+    if len(digits) != 11 or len(set(digits)) == 1:
+        return False
+    for size in (9, 10):
+        remainder = sum(d * w for d, w in zip(digits[:size], range(size + 1, 1, -1), strict=True)) % 11
+        if digits[size] != (0 if remainder < 2 else 11 - remainder):
+            return False
+    return True
+
+
+def test_cpfs_are_unique_across_many_dates_and_have_valid_check_digits():
+    days = [date(2024, 7, 1) + timedelta(days=i) for i in range(0, 840, 7)]  # 120 dates over ~2.3 years
+    cpfs = pd.Series([cpf for d in days for cpf in synthetic_cpfs(d, 150)])
+    assert cpfs.is_unique  # Faker's cpf() repeated ~1 in 40 at this volume
+    assert cpfs.map(_cpf_is_valid).all()
+    assert cpfs.str.fullmatch(r"\d{3}\.\d{3}\.\d{3}-\d{2}").all()
+
+
+def test_generated_customers_use_the_unique_cpf_scheme(clean_batch):
+    customers = clean_batch["customers"]
+    assert customers["cpf"].tolist() == synthetic_cpfs(REFERENCE_DATE, len(customers))
+
+
+def test_cpf_scheme_refuses_oversized_batches():
+    with pytest.raises(ValueError, match="customers per batch"):
+        synthetic_cpfs(REFERENCE_DATE, MAX_CUSTOMERS_PER_BATCH + 1)
 
 
 def test_as_of_before_reference_date_is_rejected():

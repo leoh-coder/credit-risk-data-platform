@@ -2,8 +2,10 @@
 #
 #   docker compose up -d                         -> starts the infrastructure (lake + warehouse)
 #   docker compose run --rm ingestion run        -> lands today's batch in the lake
+#   docker compose run --rm loader run           -> loads committed lake dates into Postgres raw
+#   docker compose run --rm dbt build            -> staging -> intermediate -> marts, with tests
 #
-# Jobs (ingestion, and later loader/dbt/ml) live under the "jobs" profile:
+# Jobs (ingestion, loader, dbt, and later ml) live under the "jobs" profile:
 # they run to completion and exit, they are not long-running services.
 
 name: credit-risk-data-platform
@@ -15,6 +17,13 @@ x-lake-env: &lake-env
   AWS_ACCESS_KEY_ID: ${LAKE_ACCESS_KEY:?set LAKE_ACCESS_KEY in .env}
   AWS_SECRET_ACCESS_KEY: ${LAKE_SECRET_KEY:?set LAKE_SECRET_KEY in .env}
   AWS_REGION: us-east-1
+
+x-warehouse-env: &warehouse-env
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: 5432
+  POSTGRES_DB: ${POSTGRES_DB:-credit_risk_dw}
+  POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
 
 services:
   # ---------------------------------------------------------------- Data Lake
@@ -84,15 +93,38 @@ services:
     image: credit-risk-data-platform/loader:latest
     profiles: ["jobs"]
     environment:
-      <<: *lake-env
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: ${POSTGRES_DB:-credit_risk_dw}
-      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      <<: [*lake-env, *warehouse-env]
     depends_on:
       seaweedfs:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  # raw -> staging -> intermediate -> marts (star schema), tests included (`dbt build`).
+  dbt:
+    build: ./dbt
+    image: credit-risk-data-platform/dbt:latest
+    profiles: ["jobs"]
+    environment:
+      <<: *warehouse-env
+      DBT_PII_SALT: ${DBT_PII_SALT:?set DBT_PII_SALT in .env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # dbt docs site (lineage graph, column docs, tests) at http://localhost:8080 - `make docs`.
+  dbt-docs:
+    image: credit-risk-data-platform/dbt:latest
+    build: ./dbt
+    profiles: ["docs"]
+    environment:
+      <<: *warehouse-env
+      DBT_PII_SALT: ${DBT_PII_SALT:?set DBT_PII_SALT in .env}
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["dbt docs generate && exec dbt docs serve --host 0.0.0.0 --port 8080 --no-browser"]
+    ports:
+      - "8080:8080"
+    depends_on:
       postgres:
         condition: service_healthy
 

@@ -1,0 +1,14 @@
+version: 2
+
+seeds:
+  - name: product_catalog
+    description: Static reference data for the credit products the bank sells.
+    config:
+      column_types:
+        product_type: text
+        product_name: text
+        is_payroll_deductible: boolean
+        is_collateralized: boolean
+    columns:
+      - name: product_type
+        data_tests: [unique, not_null]

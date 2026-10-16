@@ -3,8 +3,40 @@ version: 2
 models:
   - name: stg_open_finance__transactions
     description: One row per account transaction shared through Open Finance at onboarding.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          name: transactions_direction_matches_type
+          arguments: {expression: "(transaction_type in ('salary_deposit', 'pix_in')) = (direction = 'credit')"}
+      - dbt_utils.expression_is_true:
+          name: transactions_merchant_only_on_purchases
+          arguments: {expression: "merchant_category is null or transaction_type in ('debit_card', 'pix_out', 'boleto_payment')"}
+      - dbt_utils.expression_is_true:
+          name: transactions_atm_iff_cash_withdrawal
+          arguments: {expression: "(transaction_type = 'cash_withdrawal') = (channel = 'atm')"}
     columns:
       - name: transaction_id
         data_tests: [unique, not_null]
       - name: transacted_at
         data_tests: [not_null]
+      - name: transaction_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["salary_deposit", "pix_in", "pix_out", "debit_card", "boleto_payment", "cash_withdrawal"]
+      - name: direction
+        data_tests:
+          - accepted_values:
+              arguments: {values: ["credit", "debit"]}
+      - name: channel
+        data_tests:
+          - accepted_values:
+              arguments: {values: ["mobile_app", "internet_banking", "branch", "atm"]}
+      - name: merchant_category
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["groceries", "utilities", "restaurants", "transport", "health", "retail", "betting"]
+      - name: amount
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0, inclusive: false}

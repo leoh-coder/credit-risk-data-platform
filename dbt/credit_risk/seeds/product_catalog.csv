@@ -1,0 +1,4 @@
+product_type,product_name,is_payroll_deductible,is_collateralized
+personal_loan,Personal loan,false,false
+payroll_loan,Payroll-deductible loan,true,false
+vehicle_financing,Vehicle financing,false,true

@@ -1,4 +1,4 @@
-.PHONY: help setup up down clean ps logs ingest backfill load test lint
+.PHONY: help setup up down clean ps logs ingest backfill load transform freshness docs test lint
 
 START ?= 2025-10-01
 END   ?= 2026-09-30
@@ -33,6 +33,15 @@ backfill:  ## land one batch per day: make backfill START=... END=... AS_OF=...
 
 load:  ## load committed lake dates into Postgres raw (incremental)
 	docker compose run --rm --build loader run
+
+transform:  ## dbt build: staging -> intermediate -> marts, with tests
+	docker compose run --rm --build dbt build
+
+freshness:  ## warn/error when raw has not been loaded recently
+	docker compose run --rm --build dbt source freshness
+
+docs:  ## dbt docs (lineage, columns, tests) at http://localhost:8080 - Ctrl+C to stop
+	docker compose --profile docs up --build dbt-docs
 
 test:  ## run unit + integration tests locally (loader tests need `make up`)
 	cd ingestion && python -m pytest -q

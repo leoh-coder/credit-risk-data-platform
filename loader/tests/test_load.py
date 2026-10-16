@@ -3,6 +3,7 @@ from collections import Counter
 from dataclasses import replace
 
 import duckdb
+import psycopg
 
 from loader.lake import Lake
 from loader.main import run
@@ -43,9 +44,13 @@ def test_first_run_loads_every_committed_date_and_audits_it(settings, lake_path)
         for entity, expected in committed_rows(lake_path, day).items():
             assert raw_rows(settings, entity, day) == expected > 0
 
-    audit = query(settings, "select reference_date, rows_loaded from audit.lake_loads order by 1")
-    assert [day for day, _ in audit] == [DAY_1, DAY_2]
+    audit = query(
+        settings, "select reference_date, rows_loaded, manifest_entities from audit.lake_loads order by 1"
+    )
+    assert [day for day, _, _ in audit] == [DAY_1, DAY_2]
     assert audit[0][1] == committed_rows(lake_path, DAY_1)
+    manifest = json.loads(manifest_file(lake_path, DAY_1).read_text())
+    assert audit[0][2] == manifest["entities"]  # quarantine counts travel with the load
 
     orphans = query(
         settings,
@@ -64,6 +69,49 @@ def test_first_run_loads_every_committed_date_and_audits_it(settings, lake_path)
     }
     assert {"_batch_id", "_reference_date", "_load_id", "_loaded_at"} <= columns
     assert "reference_date" not in columns  # hive partition key not duplicated
+
+
+def test_audit_table_from_an_older_loader_is_migrated_in_place(settings):
+    query_ddl = (
+        "create table audit.lake_loads (load_id uuid primary key, reference_date date not null, "
+        "batch_id text not null, manifest_sha256 char(64) not null, contract_version text not null, "
+        "rows_loaded jsonb not null, started_at timestamp not null, finished_at timestamp not null)"
+    )
+    with psycopg.connect(settings.postgres_dsn, autocommit=True) as conn:
+        conn.execute(query_ddl)
+
+    report = run(settings)
+
+    assert report.loaded == [DAY_1, DAY_2]
+    assert query(settings, "select count(*) from audit.lake_loads where manifest_entities is not null") == [
+        (2,)
+    ]
+
+
+def raw_reference_date_indexes(settings) -> set[str]:
+    rows = query(
+        settings,
+        "select tablename from pg_indexes where schemaname = 'raw' and indexdef like '%(_reference_date)%'",
+    )
+    return {row[0] for row in rows}
+
+
+def test_every_raw_table_gets_a_reference_date_index(settings):
+    run(settings)
+    assert raw_reference_date_indexes(settings) == set(ENTITIES)
+
+
+def test_missing_indexes_are_recreated_idempotently(settings):
+    run(settings)
+    with psycopg.connect(settings.postgres_dsn, autocommit=True) as conn:
+        for entity in ENTITIES:
+            conn.execute(f"drop index raw.{entity}__reference_date_idx")  # e.g. tables from an older loader
+
+    report = run(settings)  # nothing to load, but indexes are ensured at start-up
+    run(settings)  # and ensuring them again is a no-op, not an error
+
+    assert report.up_to_date == [DAY_1, DAY_2]
+    assert raw_reference_date_indexes(settings) == set(ENTITIES)
 
 
 def test_second_run_is_a_noop(settings):
