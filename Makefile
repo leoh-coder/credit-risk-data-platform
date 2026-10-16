@@ -1,4 +1,4 @@
-.PHONY: help setup up down clean ps logs ingest backfill load transform freshness docs test lint
+.PHONY: help setup up down clean ps logs roles ingest backfill load transform freshness docs test lint
 
 START ?= 2025-10-01
 END   ?= 2026-09-30
@@ -24,6 +24,10 @@ ps:  ## container status
 
 logs:  ## follow infrastructure logs
 	docker compose logs -f seaweedfs postgres
+
+roles:  ## create/refresh the read-only login roles ml_reader + dashboard_reader (idempotent)
+	docker compose up -d --wait postgres
+	docker compose exec -T postgres sh -c 'psql -v ON_ERROR_STOP=1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -f /docker-entrypoint-initdb.d/02-roles.sql'
 
 ingest:  ## land today's batch in the lake
 	docker compose run --rm --build ingestion run

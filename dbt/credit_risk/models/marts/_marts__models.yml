@@ -327,6 +327,56 @@ models:
       - name: loaded_at
         data_type: timestamp
 
+  - name: dq_pipeline_loads
+    description: >
+      One row per load of a lake reference_date into raw (from audit.lake_loads), so consumers never read
+      the audit schema. Pipeline freshness = max(finished_at).
+    config:
+      contract: {enforced: true}
+    data_tests:
+      - no_pii_patterns
+      - dbt_utils.expression_is_true:
+          name: dq_pipeline_loads_finish_after_start
+          arguments: {expression: "finished_at >= started_at and load_seconds >= 0 and rows_loaded > 0"}
+    columns:
+      - name: load_id
+        data_type: text
+        constraints: [{type: primary_key}]
+        data_tests: [unique, not_null]
+      - name: reference_date_key
+        description: "{{ doc('date_key') }}"
+        data_type: integer
+        constraints: [{type: not_null}]
+        data_tests:
+          - relationships:
+              arguments: {to: ref('dim_date'), field: date_key}
+      - name: reference_date
+        data_type: date
+        constraints: [{type: not_null}]
+        data_tests:
+          - unique:
+              config: {where: "is_latest_for_date"}
+      - name: batch_id
+        data_type: text
+      - name: contract_version
+        data_type: text
+      - name: rows_loaded
+        description: Rows written to raw by this load, all entities together.
+        data_type: bigint
+        constraints: [{type: not_null}]
+      - name: started_at
+        data_type: timestamp
+        constraints: [{type: not_null}]
+      - name: finished_at
+        data_type: timestamp
+        constraints: [{type: not_null}]
+      - name: load_seconds
+        data_type: numeric(10, 3)
+      - name: is_latest_for_date
+        description: True for the load currently reflected in raw for this date.
+        data_type: boolean
+        constraints: [{type: not_null}]
+
   - name: fct_installments
     description: One row per installment with delinquency measures (collections / aging).
     config:
