@@ -1,0 +1,5 @@
+-r requirements.txt
+-r ../ingestion/requirements.txt
+psycopg[binary]==3.3.6
+pytest==9.1.1
+ruff==0.17.1

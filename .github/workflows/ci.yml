@@ -15,12 +15,30 @@ concurrency:
 
 jobs:
   lint-test:
-    name: Lint + unit tests
+    name: Lint + tests (${{ matrix.package }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [ingestion, loader]
+    # Loader integration tests need a real Postgres; its conftest fails (never skips) when CI is set.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: credit_risk_dw
+          POSTGRES_USER: dw_admin
+          POSTGRES_PASSWORD: ci_only_password
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U dw_admin -d credit_risk_dw"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      LOADER_TEST_PG_DSN: host=localhost port=5432 dbname=credit_risk_dw user=dw_admin password=ci_only_password
     defaults:
       run:
-        working-directory: ingestion
+        working-directory: ${{ matrix.package }}
     steps:
       - uses: actions/checkout@v7
 
@@ -29,8 +47,8 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: |
-            ingestion/requirements.txt
-            ingestion/requirements-dev.txt
+            ingestion/requirements*.txt
+            loader/requirements*.txt
 
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
@@ -45,7 +63,7 @@ jobs:
         run: python -m pytest -q
 
   compose-smoke:
-    name: Compose smoke run (3-day backfill)
+    name: Compose smoke run (3-day backfill + load)
     needs: lint-test
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -79,6 +97,27 @@ jobs:
           )
           echo "layer schemas found: $schemas"
           test "$schemas" -eq 5
+
+      - name: Load lake into Postgres raw
+        run: docker compose run --rm --build loader run
+
+      - name: Assert raw layer and audit
+        run: |
+          summary=$(docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA -F " "' <<'SQL'
+          select
+            (select count(*) from audit.lake_loads),
+            (select count(distinct _reference_date) from raw.customers),
+            (select sum((rows_loaded ->> 'transactions')::int) from audit.lake_loads)
+              = (select count(*) from raw.transactions);
+          SQL
+          )
+          echo "audit loads, raw dates, audit matches raw: $summary"
+          test "$summary" = "3 3 t"
+
+      - name: Second load is a no-op (incremental)
+        run: |
+          docker compose run --rm loader run 2>&1 | tee load2.log
+          grep -q "done: 0 loaded, 3 already up to date, 0 failed" load2.log
 
       - name: Dump logs on failure
         if: failure()

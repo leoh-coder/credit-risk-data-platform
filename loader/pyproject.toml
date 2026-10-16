@@ -1,0 +1,19 @@
+[project]
+name = "loader"
+version = "0.1.0"
+description = "Loads committed data-lake partitions into the Postgres raw layer through DuckDB"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+# ../ingestion/src: tests build a real lake with the ingestion job instead of hand-made fixtures.
+pythonpath = ["src", ".", "../ingestion/src"]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning", "ignore::FutureWarning"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "N"]

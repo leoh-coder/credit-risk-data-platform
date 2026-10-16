@@ -78,6 +78,24 @@ services:
       seaweedfs:
         condition: service_healthy
 
+  # Lake -> Postgres raw. Loads only committed dates (with a manifest), incrementally via audit.lake_loads.
+  loader:
+    build: ./loader
+    image: credit-risk-data-platform/loader:latest
+    profiles: ["jobs"]
+    environment:
+      <<: *lake-env
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-credit_risk_dw}
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    depends_on:
+      seaweedfs:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
 volumes:
   seaweedfs-data:
   postgres-data:

@@ -1,4 +1,4 @@
-.PHONY: help setup up down clean ps logs ingest backfill test lint
+.PHONY: help setup up down clean ps logs ingest backfill load test lint
 
 START ?= 2025-10-01
 END   ?= 2026-09-30
@@ -31,8 +31,13 @@ ingest:  ## land today's batch in the lake
 backfill:  ## land one batch per day: make backfill START=... END=... AS_OF=...
 	docker compose run --rm --build ingestion backfill --start $(START) --end $(END) --as-of $(AS_OF)
 
-test:  ## run unit + integration tests locally
+load:  ## load committed lake dates into Postgres raw (incremental)
+	docker compose run --rm --build loader run
+
+test:  ## run unit + integration tests locally (loader tests need `make up`)
 	cd ingestion && python -m pytest -q
+	cd loader && python -m pytest -q
 
 lint:  ## static checks
 	cd ingestion && ruff check . && ruff format --check .
+	cd loader && ruff check . && ruff format --check .
