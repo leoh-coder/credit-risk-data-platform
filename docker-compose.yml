@@ -1,0 +1,83 @@
+# Credit Risk Data Platform: local stack.
+#
+#   docker compose up -d                         -> starts the infrastructure (lake + warehouse)
+#   docker compose run --rm ingestion run        -> lands today's batch in the lake
+#
+# Jobs (ingestion, and later loader/dbt/ml) live under the "jobs" profile:
+# they run to completion and exit, they are not long-running services.
+
+name: credit-risk-data-platform
+
+x-lake-env: &lake-env
+  STORAGE_BACKEND: s3
+  S3_ENDPOINT_URL: http://seaweedfs:8333
+  LAKE_BUCKET: ${LAKE_BUCKET:-credit-risk-lake}
+  AWS_ACCESS_KEY_ID: ${LAKE_ACCESS_KEY:?set LAKE_ACCESS_KEY in .env}
+  AWS_SECRET_ACCESS_KEY: ${LAKE_SECRET_KEY:?set LAKE_SECRET_KEY in .env}
+  AWS_REGION: us-east-1
+
+services:
+  # ---------------------------------------------------------------- Data Lake
+  # S3-compatible object storage. Replaces MinIO, whose community Docker images
+  # were discontinued in 2025-2026. Same S3 API, so the code is identical for AWS S3.
+  seaweedfs:
+    image: chrislusf/seaweedfs:${SEAWEEDFS_VERSION:-4.48}
+    restart: unless-stopped
+    environment:
+      LAKE_ACCESS_KEY: ${LAKE_ACCESS_KEY:?set LAKE_ACCESS_KEY in .env}
+      LAKE_SECRET_KEY: ${LAKE_SECRET_KEY:?set LAKE_SECRET_KEY in .env}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        printf '{"identities":[{"name":"pipeline","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List","Tagging"]}]}'
+        "$$LAKE_ACCESS_KEY" "$$LAKE_SECRET_KEY" > /tmp/s3.json &&
+        exec weed server -dir=/data -s3 -s3.port=8333 -s3.config=/tmp/s3.json
+        -master.volumeSizeLimitMB=1024
+    ports:
+      - "8333:8333"   # S3 API
+      - "8888:8888"   # Filer UI: browse the lake at http://localhost:8888/buckets/
+    volumes:
+      - seaweedfs-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 8333 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  # ------------------------------------------------------------ Data Warehouse
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-credit_risk_dw}
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # --------------------------------------------------------------------- Jobs
+  ingestion:
+    build: ./ingestion
+    image: credit-risk-data-platform/ingestion:latest
+    profiles: ["jobs"]
+    environment:
+      <<: *lake-env
+      SEED: ${SEED:-42}
+      CUSTOMERS_PER_BATCH: ${CUSTOMERS_PER_BATCH:-150}
+      DIRTY_RATE: ${DIRTY_RATE:-0.02}
+    depends_on:
+      seaweedfs:
+        condition: service_healthy
+
+volumes:
+  seaweedfs-data:
+  postgres-data:
