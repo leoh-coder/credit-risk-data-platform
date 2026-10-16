@@ -1,0 +1,4 @@
+# Developed on Windows, run on Linux (Docker, CI): always store LF in the repo.
+* text=auto eol=lf
+*.parquet binary
+*.png binary

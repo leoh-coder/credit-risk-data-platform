@@ -1,0 +1,28 @@
+# Secrets
+.env
+
+# Local data (the lake lives in Docker volumes or ./data during local runs)
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# dbt
+dbt/credit_risk/target/
+dbt/credit_risk/dbt_packages/
+dbt/credit_risk/logs/
+
+# ML artifacts
+ml/artifacts/*.joblib
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
