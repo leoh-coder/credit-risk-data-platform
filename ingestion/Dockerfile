@@ -8,14 +8,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Dependencies first: this layer is cached until requirements.txt changes,
-# so editing the code does not trigger a full reinstall.
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
 COPY src/ ./src/
 
-# Never run containers as root.
 RUN useradd --create-home --uid 1000 app
 USER app
 

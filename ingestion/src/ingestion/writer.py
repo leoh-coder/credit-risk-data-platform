@@ -1,14 +1,9 @@
-"""Data Lake writer: Parquet files on S3-compatible storage (or local disk).
+"""Lake writer: Hive-partitioned Parquet on S3-compatible storage or local disk.
 
-Layout (Hive-style partitions, readable by DuckDB, Spark, Athena, Trino...):
+    <bucket>/raw|quarantine/<entity>/reference_date=YYYY-MM-DD/part-0.parquet
+    <bucket>/_manifests/reference_date=YYYY-MM-DD/manifest.json
 
-    s3://<bucket>/raw/<entity>/reference_date=YYYY-MM-DD/part-0.parquet
-    s3://<bucket>/quarantine/<entity>/reference_date=YYYY-MM-DD/part-0.parquet
-    s3://<bucket>/_manifests/reference_date=YYYY-MM-DD/manifest.json
-
-Idempotency: each run *replaces* its partition (delete + write), so reprocessing
-a date never duplicates data. The manifest is deleted FIRST and written LAST, and
-acts as the commit marker: downstream loaders only read partitions that have a manifest.
+Each run replaces its partitions. The manifest is the commit marker: deleted first, written last.
 """
 
 from __future__ import annotations
@@ -45,9 +40,7 @@ class LakeWriter:
                 }
             self.fs: fs.FileSystem = fs.S3FileSystem(**kwargs)
             self.root = self.bucket
-            if local_s3:
-                # Locally the app bootstraps its own bucket. On real AWS the bucket is
-                # provisioned by infrastructure-as-code (Terraform), never by the app.
+            if local_s3:  # on AWS the bucket is provisioned by infrastructure code, not by the app
                 self.fs.create_dir(self.bucket)
         else:
             self.fs = fs.LocalFileSystem()
@@ -58,7 +51,7 @@ class LakeWriter:
 
     def write_partition(self, zone: str, entity: str, reference_date: date, df: pd.DataFrame) -> str | None:
         partition = self._partition(zone, entity, reference_date)
-        self.fs.delete_dir_contents(partition, missing_dir_ok=True)  # overwrite = idempotent rerun
+        self.fs.delete_dir_contents(partition, missing_dir_ok=True)  # idempotent rerun
         if df.empty:
             return None
         self.fs.create_dir(partition, recursive=True)

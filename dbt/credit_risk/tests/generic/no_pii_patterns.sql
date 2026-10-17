@@ -1,7 +1,6 @@
 {#-
-    Scans every text column of the model for clear-text CPF, e-mail or Brazilian mobile numbers.
-    Returns one row per (column, pattern) with matches. Columns are discovered at run time, so a
-    new column added to a mart is covered without touching this test.
+    Clear-text CPF, e-mail or mobile numbers in any text column; one row per (column, pattern) with matches.
+    Columns are discovered at run time, so new columns are covered automatically.
 -#}
 {% test no_pii_patterns(model) %}
 

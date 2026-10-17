@@ -1,15 +1,7 @@
-"""Data contracts for the raw layer, enforced with Pandera.
+"""Pandera data contracts for the raw layer.
 
-A data contract is the formal agreement between the producer (core banking) and
-the consumers (warehouse, dbt, ML). It states column names, types, nullability
-and business rules. Two kinds of violation are handled differently:
-
-- Schema-level (missing/unexpected column, wrong table shape) -> HARD FAIL.
-  The whole batch is rejected: the producer broke the contract and must bump
-  the contract version. Loading it would silently corrupt every downstream model.
-- Row-level (negative amount, invalid state, duplicated key...) -> SOFT FAIL.
-  Bad rows go to a quarantine zone with the reason attached; good rows flow on.
-  A circuit breaker still fails the batch if too many rows are bad.
+Schema-level violations reject the whole batch (drift requires a new contract version). Row-level
+violations are quarantined with their reasons; a circuit breaker rejects the batch if too many fail.
 """
 
 from __future__ import annotations
@@ -44,7 +36,7 @@ class _LineageColumns(pa.DataFrameModel):
 
     class Config:
         coerce = True
-        strict = True  # unknown columns = schema drift = hard fail
+        strict = True  # unknown columns are schema drift
 
 
 class CustomerContract(_LineageColumns):
@@ -61,7 +53,7 @@ class CustomerContract(_LineageColumns):
 
     @pa.dataframe_check(element_wise=False)
     def customer_is_adult(cls, df: pd.DataFrame) -> Series[bool]:
-        """Credit can only be granted to customers aged 18+ at registration."""
+        """Customers must be 18+ at registration."""
         return df["birth_date"] <= df["registration_date"] - pd.DateOffset(years=18)
 
 
@@ -153,7 +145,7 @@ def validate_entity(
         failures = failures[~drop]
         is_dup_check = is_dup_check[~drop]
 
-    # Pandera reports a DataFrame-wide check once per column; it is one rule about the whole row.
+    # Pandera reports a DataFrame-wide check once per column; record it once as a row rule.
     is_row_check = failures["schema_context"] == "DataFrameSchema"
     scope = failures["column"].astype(str).where(~is_row_check, "row")
     reasons = (
@@ -165,7 +157,7 @@ def validate_entity(
     valid = contract.validate(df.drop(index=reasons.index), lazy=True)
     result = ValidationResult(entity, valid, quarantine)
 
-    # Both conditions: on small batches a handful of bad rows alone would exceed the ratio.
+    # The absolute floor keeps a few bad rows in a small batch from rejecting it.
     if result.invalid_ratio > max_invalid_ratio and len(result.quarantine) > min_invalid_rows:
         raise ContractViolationError(
             f"[{entity}] {result.invalid_ratio:.1%} of rows ({len(result.quarantine)}) failed the contract "

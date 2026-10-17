@@ -1,7 +1,7 @@
 # Secrets
 .env
 
-# Local data (the lake lives in Docker volumes or ./data during local runs)
+# Local data: lake, model artifacts, backups
 data/
 
 # Python
@@ -17,9 +17,6 @@ venv/
 dbt/credit_risk/target/
 dbt/credit_risk/dbt_packages/
 dbt/credit_risk/logs/
-
-# ML artifacts
-ml/artifacts/*.joblib
 
 # OS / editors
 .DS_Store

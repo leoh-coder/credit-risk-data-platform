@@ -1,7 +1,6 @@
 {#-
-    Calendar from the first contract year to the last scheduled due-date year (payroll loans run ~7 years).
-    Days come from dbt_utils.date_spine, not Postgres generate_series: generate_series is not supported
-    on Redshift data tables, and the spine macro is portable across adapters.
+    Calendar from the first contract year to the last due-date year. dbt_utils.date_spine instead of
+    generate_series, which Redshift does not support on data tables.
 -#}
 
 {%- set bounds_query -%}

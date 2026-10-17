@@ -52,7 +52,7 @@ def test_any_forbidden_column_in_a_feature_list_raises(column):
 
 @pytest.mark.parametrize("column", sorted(EXCLUDED_ON_PURPOSE))
 def test_deliberately_excluded_columns_never_enter_the_model(column):
-    # pricing feedback loop or socio-economic / geographic proxy
+    # pricing feedback loop or socio-economic / geographic proxy (docs/DECISIONS.md, D23)
     assert column not in FEATURES
     with pytest.raises(LeakageError, match="not in the allowlist"):
         check_feature_list([*FEATURES, column])

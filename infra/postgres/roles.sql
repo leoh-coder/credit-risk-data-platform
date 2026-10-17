@@ -1,12 +1,9 @@
--- Login roles for the consumers of the Gold layer. Idempotent:
---   fresh volume  -> runs automatically after 01-init.sql (docker-entrypoint-initdb.d)
---   existing one  -> `make roles`
--- Passwords come from the container environment; psql fails (ON_ERROR_STOP) if one is missing.
--- Both roles only inherit analytics_reader (USAGE + SELECT on marts) and default to read-only sessions.
+-- Read-only login roles for Gold consumers; idempotent. Runs after 01-init.sql on a fresh volume, or via
+-- `make roles`. Passwords come from the container environment.
 
 \getenv ml_reader_password ML_READER_PASSWORD
 \getenv dashboard_reader_password DASHBOARD_READER_PASSWORD
--- fail with a readable message (the cast error quotes it) instead of a SQL syntax error
+-- readable failure (the cast error quotes the message) instead of a syntax error
 \if :{?ml_reader_password}
 \else
     select 'ML_READER_PASSWORD is not set in the postgres container'::int;

@@ -1,8 +1,7 @@
-"""Read-only view of the data lake through DuckDB (same code for local disk and S3).
+"""Read-only view of the lake through DuckDB (local disk or S3).
 
-A date is committed only when its manifest exists: the ingestion job deletes the manifest before
-rewriting a date and writes it last. The manifest's SHA-256 is the version of that commit, so a
-rerun of the ingestion (new manifest) is detected even though its batch_id is deterministic.
+A date is committed only when its manifest exists. The manifest's SHA-256 versions the commit, so an
+ingestion rerun is detected even though its batch_id is deterministic.
 """
 
 from __future__ import annotations

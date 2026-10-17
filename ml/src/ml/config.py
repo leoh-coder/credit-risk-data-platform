@@ -1,5 +1,4 @@
-"""Runtime configuration (12-factor). The model reads the marts as `ml_reader`, a read-only login role
-that only inherits `analytics_reader` (SELECT on marts)."""
+"""Runtime configuration. The model reads the marts as the read-only `ml_reader` role."""
 
 from __future__ import annotations
 

@@ -20,9 +20,9 @@ vars:
   open_finance_history_days: 90
 
   # Data-quality budgets (percent of rows). Above *_warn the build warns; above *_error it fails.
-  dq_unknown_customer_warn_pct: 0
+  dq_unknown_customer_warn_pct: 2      # ~2x the observed rate (0.99%)
   dq_unknown_customer_error_pct: 5
-  dq_incomplete_window_warn_pct: 10
+  dq_incomplete_window_warn_pct: 15    # expected ~11% with DIRTY_RATE 0.01 (1 - 0.99^12)
   dq_incomplete_window_error_pct: 30
   dq_quarantine_warn_pct: 5
   dq_quarantine_error_pct: 10

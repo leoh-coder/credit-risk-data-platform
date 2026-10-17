@@ -1,4 +1,4 @@
-.PHONY: help setup up down clean ps logs roles ingest backfill load transform freshness docs test lint
+.PHONY: help setup up down clean ps logs roles ingest backfill load transform freshness docs train dashboard test lint
 
 START ?= 2025-10-01
 END   ?= 2026-09-30
@@ -47,10 +47,20 @@ freshness:  ## warn/error when raw has not been loaded recently
 docs:  ## dbt docs (lineage, columns, tests) at http://localhost:8080 - Ctrl+C to stop
 	docker compose --profile docs up --build dbt-docs
 
+train:  ## train the PD model out of time on the marts (as ml_reader); artifacts in the ml-artifacts volume
+	docker compose run --rm --build ml
+
+dashboard:  ## Streamlit at http://localhost:8501 (engineering, portfolio, risk simulation) - Ctrl+C to stop
+	docker compose --profile app up --build dashboard
+
 test:  ## run unit + integration tests locally (loader tests need `make up`)
 	cd ingestion && python -m pytest -q
 	cd loader && python -m pytest -q
+	cd ml && python -m pytest -q
+	cd dashboard && python -m pytest -q
 
 lint:  ## static checks
 	cd ingestion && ruff check . && ruff format --check .
 	cd loader && ruff check . && ruff format --check .
+	cd ml && ruff check . && ruff format --check .
+	cd dashboard && ruff check . && ruff format --check .

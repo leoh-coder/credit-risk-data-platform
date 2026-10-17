@@ -1,8 +1,6 @@
 {#-
-    Days past due (DPD) of each installment, measured against the observation clock.
-      paid            -> how late the observed payment was (early payments count as 0)
-      unpaid, due     -> observation_date - due_date (still running)
-      unpaid, not due -> 0 (nothing owed yet; NOT evidence of good behavior)
+    Days past due against the observation clock: paid -> lateness of the payment (early = 0);
+    unpaid and due -> observation_date - due_date; not due -> 0 (not evidence of good behavior).
 -#}
 
 with installments as (

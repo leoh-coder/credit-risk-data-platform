@@ -1,7 +1,4 @@
-{#-
-    Grain: one row per credit operation (contract). Every raw operation lands here: an operation
-    whose customer was quarantined in the lake points to the unknown customer instead of vanishing.
--#}
+{#- Grain: one operation. Operations whose customer was quarantined point to the unknown customer. -#}
 
 with operations as (
 

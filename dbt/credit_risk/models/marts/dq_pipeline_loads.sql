@@ -1,7 +1,4 @@
-{#-
-    One row per load of a lake date into raw (audit.lake_loads), so the engineering view of the
-    dashboard reads marts only. Freshness = max(finished_at).
--#}
+{#- One row per load of a lake date into raw, so consumers never read the audit schema. -#}
 
 with loads as (
 

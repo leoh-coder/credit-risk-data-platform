@@ -2,9 +2,8 @@
 
     python -m loader.main run      # load every committed lake date that is new or changed
 
-Incremental: a date is loaded when its manifest hash differs from the last one recorded in
-audit.lake_loads. Each date commits or rolls back on its own; one bad date does not block the rest,
-but makes the process exit non-zero so the orchestrator notices.
+A date is loaded when its manifest hash differs from the last one in audit.lake_loads. Each date commits
+or rolls back on its own; any failure makes the process exit non-zero.
 """
 
 from __future__ import annotations
@@ -82,7 +81,7 @@ def run(settings: Settings) -> RunReport:
                 logger.error("date=%s ROLLED BACK, stays pending: %s", day, exc)
                 report.failed.append(day)
                 continue
-            warehouse.ensure_raw_indexes(batch.entities)  # tables created by this load get theirs now
+            warehouse.ensure_raw_indexes(batch.entities)  # tables created by this load
             report.loaded.append(day)
             summary = " ".join(f"{entity}={n}" for entity, n in rows.items())
             logger.info("date=%s batch=%s loaded: %s", day, batch.batch_id, summary)

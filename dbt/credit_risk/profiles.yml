@@ -1,4 +1,4 @@
-# Versioned on purpose: it holds no secrets, only env_var() lookups (12-factor, same vars as compose).
+# No secrets here: every credential is an env_var() lookup.
 credit_risk:
   target: dev
   outputs:

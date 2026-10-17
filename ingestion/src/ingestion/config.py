@@ -1,9 +1,4 @@
-"""Runtime configuration, validated by Pydantic.
-
-Every knob comes from environment variables (12-factor app). Pydantic validates
-types and ranges at startup, so a typo in `.env` fails fast with a clear message
-instead of producing a silently wrong batch three steps later.
-"""
+"""Runtime configuration from environment variables, validated at startup."""
 
 from __future__ import annotations
 
@@ -22,7 +17,7 @@ class Settings(BaseSettings):
     lake_bucket: str = "credit-risk-lake"
     lake_local_path: str = "./data/lake"
 
-    # S3-compatible endpoint (SeaweedFS locally, empty string = real AWS S3)
+    # SeaweedFS locally; empty means AWS S3
     s3_endpoint_url: str = ""
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""

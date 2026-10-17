@@ -1,8 +1,4 @@
-{#-
-    dbt's default concatenates target schema + custom schema ("staging_marts").
-    The warehouse already has one schema per layer (infra/postgres/init.sql) with its own grants,
-    so models land in exactly the schema they declare.
--#}
+{#- Models land in the schema they declare (one schema per layer, with its own grants), not "<target>_<custom>". -#}
 {% macro generate_schema_name(custom_schema_name, node) -%}
     {%- if custom_schema_name is none -%}
         {{ target.schema }}

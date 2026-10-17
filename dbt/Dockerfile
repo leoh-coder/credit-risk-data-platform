@@ -9,13 +9,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 COPY requirements.txt /app/requirements.txt
 RUN pip install -r /app/requirements.txt
 
-# The project dir must belong to `app`: dbt writes dbt_packages/, target/ and logs/ next to dbt_project.yml.
+# dbt writes dbt_packages/, target/ and logs/ inside the project directory.
 RUN useradd --create-home --uid 1000 app && install -d -o app -g app /app/credit_risk
 WORKDIR /app/credit_risk
 COPY --chown=app:app credit_risk/ ./
 USER app
 
-# Bake dbt packages into the image (pinned by package-lock.yml): runs need no access to hub.getdbt.com.
+# Packages are pinned by package-lock.yml and baked in: runs need no access to the package hub.
 RUN dbt deps
 
 ENTRYPOINT ["dbt"]

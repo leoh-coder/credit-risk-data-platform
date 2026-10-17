@@ -1,13 +1,7 @@
 {#-
-    Probability-of-default label per credit operation.
-
-    Default = DPD >= pd_default_dpd on any of the first pd_window_installments installments
-    (fewer if the contract is shorter). Censoring rules:
-      - a GOOD outcome is only known once the whole window had time to reach the threshold (is_mature);
-      - a BAD outcome is only labeled on mature contracts too: labeling early bads while immature goods
-        stay unlabeled would over-sample defaults in recent cohorts;
-      - a gap in the window (installment quarantined in the lake) cannot hide a default that was already
-        observed, but it can hide one, so an unseen default is never assumed to be a good.
+    PD label per operation: DPD >= pd_default_dpd within the first pd_window_installments installments.
+    Only mature contracts are labeled, bads included (labeling early bads alone would over-sample defaults
+    in recent cohorts). A gap in the window can confirm an observed default but never a good.
 -#}
 
 {%- set window_size = var('pd_window_installments') -%}
@@ -32,8 +26,7 @@ windows as (
         contract_date,
         observed_at::date                                           as observation_date,
         least(installments_count, {{ window_size }})                as window_installments,
-        -- installment k is due k months after the contract; month arithmetic clamps to the month end,
-        -- so it never lands earlier than the source schedule and maturity is never declared too early
+        -- month arithmetic clamps to the month end, so maturity is never declared before the real due date
         cast({{ dbt.dateadd(
             'month', 'least(installments_count, ' ~ window_size ~ ')', 'contract_date'
         ) }} as date)                                               as window_last_due_date

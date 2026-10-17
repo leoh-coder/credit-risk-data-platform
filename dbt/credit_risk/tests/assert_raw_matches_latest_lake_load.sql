@@ -1,5 +1,4 @@
--- Closes the reconciliation chain lake -> raw -> facts: for every date, raw holds exactly the rows
--- the loader recorded in its latest audit.lake_loads entry (no extra, missing or stale dates).
+-- Reconciliation lake -> raw: per date, raw holds exactly the rows of the latest audit.lake_loads entry.
 
 {%- set raw_tables = [
     ('core_banking', 'customers'),

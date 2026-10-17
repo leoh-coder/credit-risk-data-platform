@@ -1,9 +1,7 @@
-"""The model's feature contract: an explicit allowlist of columns known at the grant date.
+"""Feature allowlist: the only columns the model may use, all known at the grant date.
 
-Everything the model sees goes through `feature_matrix`, which selects exactly FEATURES. Outcome columns
-computed after the grant (delinquency, maturity, the label itself) are listed in FORBIDDEN_COLUMNS, and
-`check_feature_list` refuses any list that contains them or anything outside the allowlist, so adding a
-feature is a deliberate, reviewed change to this file.
+`check_feature_list` rejects forbidden (outcome, key, lineage) and non-allowlisted columns; see
+docs/DECISIONS.md (D22, D23).
 """
 
 from __future__ import annotations
@@ -46,10 +44,8 @@ MONEY_FEATURES: tuple[str, ...] = (
     "of_monthly_outflow",
 )
 
-# Known at the grant date, but left out on purpose (not leakage, so not in FORBIDDEN_COLUMNS):
-# the bank's own risk-based price (feedback loop) and socio-economic / geographic proxies. state_code
-# was dropped after the first training: the generator draws it independently of risk, yet the model
-# gave it odds ratios up to 1.6 by chance (permutation importance ~0).
+# Known at the grant date but left out: the bank's own risk-based price (feedback loop) and
+# socio-economic / geographic proxies.
 EXCLUDED_ON_PURPOSE: frozenset[str] = frozenset(
     {"interest_rate_monthly", "email_domain", "phone_area_code", "state_code"}
 )

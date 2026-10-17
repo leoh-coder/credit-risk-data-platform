@@ -1,8 +1,4 @@
-{#-
-    Behavioral features from the Open Finance history shared at onboarding.
-    Only transactions strictly BEFORE the application (registration_date) and inside the
-    history window are used: anything else would leak post-decision behavior into the model.
--#}
+{#- Open Finance features from transactions strictly before the application, inside the history window. -#}
 
 {%- set history_days = var('open_finance_history_days') -%}
 
@@ -27,7 +23,7 @@ aggregated as (
 
     select
         customer_id,
-        -- SUM(CASE ...) instead of Postgres FILTER (WHERE ...): portable (e.g. Redshift lacks FILTER)
+        -- SUM(CASE ...) rather than FILTER (WHERE ...), which Redshift lacks
         count(*)                                                                    as tx_count,
         sum(case when direction = 'credit' then amount end)                         as inflow_amount,
         sum(case when direction = 'debit' then amount end)                          as outflow_amount,

@@ -4,8 +4,7 @@
     python -m ingestion.main run --date 2026-10-01
     python -m ingestion.main backfill --start 2025-10-01 --end 2026-10-14
 
-`--as-of` freezes the "observation clock" (default: today). Fixing it makes
-reruns byte-for-byte reproducible, which is what you want in CI.
+`--as-of` freezes the observation clock (default: today) so reruns are reproducible.
 """
 
 from __future__ import annotations
@@ -35,10 +34,10 @@ def run_batch(reference_date: date, as_of: date, settings: Settings, writer: Lak
     )
     batch, injected = inject_anomalies(batch, settings.dirty_rate, settings.seed, reference_date)
 
-    # Validate everything BEFORE writing anything: a batch is all-or-nothing.
+    # Validate everything before writing: a batch is all-or-nothing.
     results = {entity: validate_entity(entity, df) for entity, df in batch.items()}
 
-    # Only after validation passed: a rejected rerun must leave the previous commit untouched.
+    # Only after validation: a rejected rerun must keep the previous commit.
     writer.invalidate_manifest(reference_date)
     entities = {}
     for entity, result in results.items():

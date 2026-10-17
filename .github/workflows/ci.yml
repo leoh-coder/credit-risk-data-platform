@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [ingestion, loader]
+        package: [ingestion, loader, ml, dashboard]
     # Loader integration tests need a real Postgres; its conftest fails (never skips) when CI is set.
     services:
       postgres:
@@ -49,6 +49,8 @@ jobs:
           cache-dependency-path: |
             ingestion/requirements*.txt
             loader/requirements*.txt
+            ml/requirements*.txt
+            dashboard/requirements*.txt
 
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
@@ -63,7 +65,7 @@ jobs:
         run: python -m pytest -q
 
   compose-smoke:
-    name: Compose smoke run (backfill, load, dbt build, freshness, docs)
+    name: Compose smoke run (backfill, load, dbt build, freshness, docs, roles, dashboard)
     needs: lint-test
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -150,10 +152,43 @@ jobs:
           echo "reads marts, uses staging, uses raw: $result"
           test "$result" = "t f f"
 
+      - name: Assert read-only login roles (ml_reader, dashboard_reader)
+        run: |
+          result=$(docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA -F " "' <<'SQL'
+          select
+            (select count(*) from pg_roles where rolname in ('ml_reader', 'dashboard_reader') and rolcanlogin),
+            pg_has_role('ml_reader', 'analytics_reader', 'MEMBER'),
+            pg_has_role('dashboard_reader', 'analytics_reader', 'MEMBER'),
+            has_schema_privilege('dashboard_reader', 'raw', 'USAGE'),
+            has_schema_privilege('ml_reader', 'audit', 'USAGE');
+          SQL
+          )
+          echo "login roles, ml member, dashboard member, dashboard uses raw, ml uses audit: $result"
+          test "$result" = "2 t t f f"
+
+      # The model is not trained here: 3 days of contracts have no mature cohort to learn from.
+      - name: Build the ml image
+        run: docker compose build ml
+
+      - name: Every dashboard query runs against the marts as dashboard_reader
+        run: |
+          docker compose --profile app run --rm -T dashboard python - <<'PY'
+          from dashboard.config import get_settings
+          from dashboard.queries import QUERIES, fetch
+          for name in QUERIES:
+              frame = fetch(name, get_settings().database_url)
+              print(f"{name}: {len(frame)} rows")
+          PY
+
+      - name: Dashboard container becomes healthy
+        run: |
+          docker compose --profile app up -d --wait --wait-timeout 120 dashboard
+          curl -fsS http://localhost:8501/_stcore/health
+
       - name: Dump logs on failure
         if: failure()
         run: docker compose logs --no-color --tail 200
 
       - name: Tear down
         if: always()
-        run: docker compose --profile jobs down -v
+        run: docker compose --profile jobs --profile app down -v

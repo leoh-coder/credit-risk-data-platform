@@ -1,5 +1,4 @@
-"""Model pipelines. The logistic regression is the main model (scorecard standard, interpretable);
-HistGradientBoosting is the single comparison model. Both take the raw allowlisted frame."""
+"""Main model (logistic regression) and comparison model (HistGradientBoosting)."""
 
 from __future__ import annotations
 
@@ -42,7 +41,13 @@ def gradient_boosting_pipeline() -> Pipeline:
     prep = ColumnTransformer(
         [("cat", encoder, list(CATEGORICAL_FEATURES)), ("num", "passthrough", list(NUMERIC_FEATURES))]
     )
+    # Regularized: with defaults it reached train AUC 0.99 and lost out of time. Early stopping
+    # validates on 10% of the training period, never on the test period.
     model = HistGradientBoostingClassifier(
-        categorical_features=list(range(len(CATEGORICAL_FEATURES))), random_state=RANDOM_STATE
+        categorical_features=list(range(len(CATEGORICAL_FEATURES))),
+        max_depth=3,
+        min_samples_leaf=100,
+        early_stopping=True,
+        random_state=RANDOM_STATE,
     )
     return Pipeline([("prep", prep), ("model", model)])

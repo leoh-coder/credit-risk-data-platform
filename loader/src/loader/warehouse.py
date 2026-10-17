@@ -1,12 +1,8 @@
-"""Postgres `raw` (Bronze) layer, written through DuckDB's postgres extension.
+"""Postgres `raw` layer, written through DuckDB's postgres extension.
 
-One reference_date = one Postgres transaction:
-  delete that date in every raw table -> insert it again from the lake -> reconcile row counts with
-  the manifest -> confirm the manifest did not change while we read -> record the load -> COMMIT.
-Any failure rolls the whole date back, so readers see either the previous load or the new one.
-
-Raw tables mirror the lake 1:1 and are created from the Parquet schema on first load (the Pandera
-contract already versions that schema). INSERT ... BY NAME makes schema drift fail loudly.
+One transaction per reference_date: delete the date, insert it from the lake, reconcile counts with the
+manifest, re-check the manifest, record the load, commit. Raw tables are created from the Parquet schema
+on first load; INSERT ... BY NAME makes schema drift fail.
 """
 
 from __future__ import annotations
@@ -36,7 +32,7 @@ AUDIT_DDL = (
     "CREATE INDEX IF NOT EXISTS lake_loads_reference_date_idx "
     "ON audit.lake_loads (reference_date, finished_at)",
     "COMMENT ON TABLE audit.lake_loads IS 'One row per committed load of a lake reference_date into raw'",
-    # Idempotent migration: tables created before this column existed get it on the next run.
+    # Idempotent migration for tables created before this column existed.
     "ALTER TABLE audit.lake_loads ADD COLUMN IF NOT EXISTS manifest_entities jsonb",
     "COMMENT ON COLUMN audit.lake_loads.manifest_entities IS "
     "'Per-entity counts from the lake manifest (received/valid/quarantined); "
@@ -62,12 +58,8 @@ class Warehouse:
         self.con.execute("CALL pg_clear_cache()")  # let DuckDB see a table it did not create itself
 
     def ensure_raw_indexes(self, entities) -> None:
-        """Index raw.<entity>(_reference_date): every load filters on it (DELETE, reconciliation).
-
-        Without it each date is a sequential scan of an ever-growing table: quadratic over a backfill.
-        Runs outside the per-date transaction (postgres_execute uses its own connection) and is
-        idempotent, so it covers new tables and tables created by an older loader alike.
-        """
+        """Idempotent index on raw.<entity>(_reference_date); without it every per-date delete and
+        reconciliation scans the whole table. Runs on its own connection, outside the load transaction."""
         for entity in entities:
             name = safe_identifier(entity)
             if self._table_exists(name):

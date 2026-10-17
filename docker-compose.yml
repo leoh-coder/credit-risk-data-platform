@@ -4,8 +4,10 @@
 #   docker compose run --rm ingestion run        -> lands today's batch in the lake
 #   docker compose run --rm loader run           -> loads committed lake dates into Postgres raw
 #   docker compose run --rm dbt build            -> staging -> intermediate -> marts, with tests
+#   docker compose run --rm ml                   -> trains the PD model (artifacts in the ml-artifacts volume)
+#   docker compose --profile app up dashboard    -> Streamlit at http://localhost:8501
 #
-# Jobs (ingestion, loader, dbt, and later ml) live under the "jobs" profile:
+# Jobs (ingestion, loader, dbt, ml) live under the "jobs" profile:
 # they run to completion and exit, they are not long-running services.
 
 name: credit-risk-data-platform
@@ -27,8 +29,7 @@ x-warehouse-env: &warehouse-env
 
 services:
   # ---------------------------------------------------------------- Data Lake
-  # S3-compatible object storage. Replaces MinIO, whose community Docker images
-  # were discontinued in 2025-2026. Same S3 API, so the code is identical for AWS S3.
+  # S3-compatible object storage (MinIO's community images were discontinued); same code as for AWS S3.
   seaweedfs:
     image: chrislusf/seaweedfs:${SEAWEEDFS_VERSION:-4.48}
     restart: unless-stopped
@@ -86,7 +87,7 @@ services:
       <<: *lake-env
       SEED: ${SEED:-42}
       CUSTOMERS_PER_BATCH: ${CUSTOMERS_PER_BATCH:-150}
-      DIRTY_RATE: ${DIRTY_RATE:-0.02}
+      DIRTY_RATE: ${DIRTY_RATE:-0.01}
     depends_on:
       seaweedfs:
         condition: service_healthy
@@ -132,6 +133,44 @@ services:
       postgres:
         condition: service_healthy
 
+  # marts -> PD model artifacts (`make train`), as the read-only ml_reader role.
+  ml:
+    build: ./ml
+    image: credit-risk-data-platform/ml:latest
+    profiles: ["jobs"]
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-credit_risk_dw}
+      ML_READER_PASSWORD: ${ML_READER_PASSWORD:?set ML_READER_PASSWORD in .env}
+    volumes:
+      - ml-artifacts:/artifacts
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Streamlit at http://localhost:8501 (`make dashboard`), as dashboard_reader.
+  dashboard:
+    build:
+      context: ./dashboard
+      additional_contexts:
+        ml: ./ml
+    image: credit-risk-data-platform/dashboard:latest
+    profiles: ["app"]
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-credit_risk_dw}
+      DASHBOARD_READER_PASSWORD: ${DASHBOARD_READER_PASSWORD:?set DASHBOARD_READER_PASSWORD in .env}
+    volumes:
+      - ml-artifacts:/artifacts:ro
+    ports:
+      - "8501:8501"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   seaweedfs-data:
   postgres-data:
+  ml-artifacts:

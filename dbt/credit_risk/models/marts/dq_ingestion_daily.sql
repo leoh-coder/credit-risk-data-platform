@@ -1,13 +1,7 @@
 {#-
-    Ingestion data quality per reference_date x entity, from the LATEST load of each date.
-    Quarantined rows stay in the lake; only their counts travel through
-    audit.lake_loads. A date whose latest load predates those counts is left out rather than
-    reported with stale numbers from an older load.
-
-    The quarantine budget is evaluated on a rolling window of the last 7 loaded dates per entity
-    because daily denominators of ~30 rows made the daily rate pure noise. The window
-    rate is sum(quarantined) / sum(received), not an average of daily rates, so small days weigh less.
-    ROWS counts loaded dates, not calendar days (a rejected date simply is not in the window).
+    Ingestion quality per reference_date x entity, from the latest load of each date (quarantined rows
+    stay in the lake; only their counts reach audit.lake_loads). The 7-date window rate is
+    sum(quarantined) / sum(received), so small days weigh less; ROWS counts loaded dates, not calendar days.
 -#}
 
 with ranked_loads as (

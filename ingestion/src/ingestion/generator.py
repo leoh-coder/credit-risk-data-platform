@@ -1,25 +1,8 @@
-"""Synthetic core-banking source system.
+"""Synthetic core-banking source: one daily batch of customers, credit operations, installments and
+pre-application Open Finance transactions.
 
-Simulates what a Brazilian retail bank's operational systems would export for
-one *reference date* (one daily batch):
-
-- customers          -> onboarding / KYC system (cadastral data)
-- credit_operations  -> loan origination system (contracts granted that day)
-- installments       -> loan servicing system (payment schedule + observed payments)
-- transactions       -> account history shared via Open Finance at onboarding
-                        (behavioral data from the `history_days` before the application)
-
-Design principles
------------------
-1. Deterministic: the same (seed, reference_date, as_of) always yields the same
-   batch. That makes reruns idempotent and bugs reproducible.
-2. Vectorized with NumPy: no Python loops over rows except for Faker strings.
-3. Hidden latent risk: every customer gets an unobserved risk factor `z` that
-   drives BOTH the observable features (income, bureau score, betting spend...)
-   AND the probability of default. `z` is never exported, so a downstream model
-   has to learn risk from observable signals, exactly like in real life.
-4. Right-censoring: payments are only "observed" up to `as_of`. Recent contracts
-   have immature performance; the ML layer must respect a performance window.
+Deterministic per (seed, reference_date, as_of). A latent risk factor `z` drives both the observable
+features and default and is never exported. Payments after `as_of` are not observed (right-censoring).
 """
 
 from __future__ import annotations
@@ -32,15 +15,14 @@ import numpy as np
 import pandas as pd
 from faker import Faker
 
-GENERATOR_VERSION = "1.1.0"  # 1.1.0: unique synthetic CPFs (Faker's collided)
+GENERATOR_VERSION = "1.1.0"
 
-# Faker's pt_BR cpf() draws 9 *distinct* digits: only 10!/1! ~ 3.6 M values, so ~1 in 40 customers
-# shared a CPF at 25 k customers. CPFs now come from a per-(date, row) sequence scrambled by a
-# bijection mod 10^9 (odd multiplier, not divisible by 5), unique within any 10,000-day window.
+# Faker's pt_BR cpf() covers only ~3.6 M values and collided at ~25 k customers. A bijection mod 10^9
+# over (date, row) is unique within any 10,000-day window.
 _CPF_MULTIPLIER = 7_919_239
-MAX_CUSTOMERS_PER_BATCH = 2_500  # with rows 1..2_500 no sequence maps to an invalid repdigit CPF
+MAX_CUSTOMERS_PER_BATCH = 2_500  # larger rows can map to an invalid repdigit CPF
 
-# Approximate population share per Brazilian state (IBGE-inspired, normalized below).
+# Approximate population share per state, normalized below.
 STATE_WEIGHTS: dict[str, float] = {
     "SP": 21.9,
     "MG": 10.0,
@@ -169,7 +151,7 @@ def _add_months(start: pd.Timestamp, months: np.ndarray) -> pd.DatetimeIndex:
 
 
 def _metadata(df: pd.DataFrame, ctx: BatchContext) -> pd.DataFrame:
-    """Lineage columns: every raw row knows which batch and contract produced it."""
+    """Lineage columns on every raw row."""
     return df.assign(
         _batch_id=ctx.batch_id,
         _reference_date=pd.Timestamp(ctx.reference_date),
@@ -248,7 +230,7 @@ def generate_batch(
     mult_hi = np.array([_PRODUCT_INCOME_MULT[p][1] for p in product])
     principal = op_income * rng.uniform(mult_lo, mult_hi)
 
-    annuity = rate / (1 - (1 + rate) ** -terms)  # Price table (French amortization)
+    annuity = rate / (1 - (1 + rate) ** -terms)  # French amortization (constant installment)
     is_payroll = product == "payroll_loan"
     max_principal = PAYROLL_MAX_COMMITMENT * op_income / annuity
     principal = np.where(is_payroll, np.minimum(principal, max_principal), principal)
@@ -376,10 +358,7 @@ def generate_batch(
     }
 
 
-# ---------------------------------------------------------------------------
-# Fault injection: real source systems send dirty data. We simulate it on purpose
-# so the data-contract gate has something to catch.
-# ---------------------------------------------------------------------------
+# Fault injection: dirty source data for the contract gate to catch.
 def inject_anomalies(
     batch: dict[str, pd.DataFrame], rate: float, seed: int, reference_date: date
 ) -> tuple[dict[str, pd.DataFrame], dict[str, int]]:

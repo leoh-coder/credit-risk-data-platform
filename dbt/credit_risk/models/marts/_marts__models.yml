@@ -1,7 +1,6 @@
 version: 2
 
-# Gold interface consumed by BI and the PD model. Contracts are enforced: dbt refuses to build a mart
-# whose SQL does not produce exactly these columns and types, and Postgres enforces the constraints.
+# Gold interface. Contracts are enforced: a mart must produce exactly these columns, types and constraints.
 
 models:
   - name: dim_customers
@@ -261,14 +260,14 @@ models:
       - dbt_utils.expression_is_true:
           name: dq_ingestion_window_counts_add_up
           arguments: {expression: "rows_quarantined_7d <= rows_received_7d and dates_in_window_7d between 1 and 7"}
-      # Budget on the rolling 7-date rate, not the noisy daily rate.
+      # Budget on the rolling 7-date rate, evaluated once the window holds 7 loaded dates.
       - dbt_utils.expression_is_true:
           name: dq_budget_quarantine_warn
-          arguments: {expression: "quarantine_pct_7d <= {{ var('dq_quarantine_warn_pct') }}"}
+          arguments: {expression: "dates_in_window_7d < 7 or quarantine_pct_7d <= {{ var('dq_quarantine_warn_pct') }}"}
           config: {severity: warn}
       - dbt_utils.expression_is_true:
           name: dq_budget_quarantine_error
-          arguments: {expression: "quarantine_pct_7d <= {{ var('dq_quarantine_error_pct') }}"}
+          arguments: {expression: "dates_in_window_7d < 7 or quarantine_pct_7d <= {{ var('dq_quarantine_error_pct') }}"}
     columns:
       - name: ingestion_quality_key
         description: "{{ doc('surrogate_key') }}"

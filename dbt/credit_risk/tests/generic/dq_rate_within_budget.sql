@@ -1,8 +1,4 @@
-{#-
-    Data-quality budget: fails (returns one row with the measured rate) when the share of rows
-    matching `bad_rows` exceeds `max_pct` percent. Applied twice per metric in YAML, once with
-    severity warn and once with severity error, so a degradation is visible before it blocks.
--#}
+{#- Fails with the measured rate when the share of rows matching `bad_rows` exceeds `max_pct` percent. -#}
 {% test dq_rate_within_budget(model, bad_rows, max_pct) %}
 
 with stats as (

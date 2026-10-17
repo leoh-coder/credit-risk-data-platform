@@ -1,8 +1,6 @@
-"""Out-of-time split: never random.
+"""Out-of-time split: train before `test_start`, test on [`test_start`, `max_contract_date`].
 
-Only contracts up to `max_contract_date` (every product mature) are eligible. Train on contracts before
-`test_start`, test on [`test_start`, `max_contract_date`]. Rows after the limit mean the population query
-is wrong, so they raise instead of being silently dropped.
+Contracts after `max_contract_date` (not every product is mature) raise instead of being dropped.
 """
 
 from __future__ import annotations

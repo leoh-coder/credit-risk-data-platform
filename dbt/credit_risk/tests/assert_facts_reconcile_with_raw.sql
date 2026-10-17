@@ -1,5 +1,4 @@
--- Every raw row must reach its fact table: orphans go to the unknown member, they are never dropped.
--- Returns the mismatching facts (a passing test returns no rows).
+-- Every raw row reaches its fact table; orphans go to the unknown member instead of being dropped.
 
 with counts as (
 

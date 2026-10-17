@@ -1,8 +1,5 @@
-"""Training population from the marts only (fct_credit_operations + dim_customers + dim_products).
-
-The SELECT list is generated from the feature allowlist, so outcome columns are never even fetched:
-the leakage guard applies at the source, not only when building the feature matrix.
-"""
+"""Training population from the marts. The SELECT list is generated from the allowlist, so outcome
+columns are never fetched."""
 
 from __future__ import annotations
 
@@ -14,7 +11,7 @@ from sqlalchemy import create_engine, text
 from ml.features import CATEGORICAL_FEATURES, FEATURES, TARGET, check_feature_list
 from ml.split import MAX_CONTRACT_DATE
 
-# Which mart each allowlisted feature comes from (alias in POPULATION_SQL).
+# Mart alias each allowlisted feature comes from.
 FEATURE_SOURCE = {
     "principal_amount": "f",
     "installments_count": "f",
@@ -38,7 +35,7 @@ FEATURE_SOURCE = {
 def population_sql() -> str:
     check_feature_list(FEATURE_SOURCE)
     assert set(FEATURE_SOURCE) == set(FEATURES), "every allowlisted feature needs a source"
-    # numeric columns are cast to double precision so pandas receives floats, not Decimal objects
+    # double precision, so pandas receives floats instead of Decimal
     columns = ",\n    ".join(
         f"{FEATURE_SOURCE[name]}.{name}"
         if name in CATEGORICAL_FEATURES

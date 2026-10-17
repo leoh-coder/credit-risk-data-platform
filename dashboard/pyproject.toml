@@ -1,0 +1,19 @@
+[project]
+name = "dashboard"
+version = "0.1.0"
+description = "Streamlit dashboard over the credit risk marts and the PD model"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+# the simulation reuses the ml package (feature allowlist and the exact contribution decomposition)
+pythonpath = ["src", "../ml/src", "."]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning", "ignore::FutureWarning"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+src = ["src", "tests", "../ml/src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "N"]

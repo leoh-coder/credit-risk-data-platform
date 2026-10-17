@@ -14,8 +14,7 @@ RUN pip install -r requirements.txt
 RUN useradd --create-home --uid 1000 app
 USER app
 
-# Bake DuckDB extensions into the image: runs need no network access to extensions.duckdb.org,
-# and the extension version is pinned together with the duckdb wheel.
+# Extensions are baked in, pinned with the duckdb wheel: runs need no network access.
 RUN python -c "import duckdb; con = duckdb.connect(); [con.install_extension(e) for e in ('postgres', 'httpfs')]"
 
 COPY src/ ./src/

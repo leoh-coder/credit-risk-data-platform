@@ -1,6 +1,5 @@
--- Open Finance history is shared BEFORE the application. A transaction on/after the
--- application date means the source changed semantics; the feature model filters such rows, but the
--- source must be fixed, so this fails loudly instead of being silently absorbed.
+-- Open Finance history precedes the application. The feature model filters later rows anyway, but a
+-- transaction on/after the application date means the source changed semantics, so fail loudly.
 
 select
     t.transaction_id,

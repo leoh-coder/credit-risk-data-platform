@@ -24,7 +24,7 @@ in the lake, so a good outcome cannot be proven; an already observed default is 
 {% enddocs %}
 
 {% docs unknown_member %}
-Kimball unknown member (key `'-1'`). Row-level quarantine in the lake can drop a parent (customer,
+Unknown member (key `'-1'`). Row-level quarantine in the lake can drop a parent (customer,
 operation) while its children survive; facts then point here instead of disappearing, so totals keep
 reconciling with the source. Exclude it from model training and from per-customer analyses.
 {% enddocs %}
@@ -35,5 +35,5 @@ rebuilds, unlike database sequences.
 {% enddocs %}
 
 {% docs date_key %}
-Smart integer date key `YYYYMMDD`, joins to `dim_date.date_key`.
+Integer date key `YYYYMMDD`, joins to `dim_date.date_key`.
 {% enddocs %}

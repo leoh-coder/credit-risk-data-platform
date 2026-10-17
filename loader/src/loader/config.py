@@ -1,8 +1,4 @@
-"""Runtime configuration, validated by Pydantic.
-
-Same 12-factor approach as the ingestion job: every knob is an environment variable, and the lake
-variables have the same names in both jobs, so one `.env` / compose anchor configures both.
-"""
+"""Runtime configuration from environment variables; lake variables share names with the ingestion job."""
 
 from __future__ import annotations
 

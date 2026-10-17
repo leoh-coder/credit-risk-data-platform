@@ -1,7 +1,6 @@
 {#-
-    PII boundary: name, e-mail, phone and CPF never leave this model in clear text.
-    Materialized as a TABLE on purpose: a view would store the salt in its definition, and
-    Postgres exposes view definitions to any role through pg_views.
+    PII boundary: name, e-mail, phone and CPF never leave this model in clear text. A table, not a view:
+    a view definition (readable by any role through pg_views) would expose the salt.
 -#}
 {{ config(materialized='table') }}
 

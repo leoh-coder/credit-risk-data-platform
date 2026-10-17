@@ -1,5 +1,5 @@
--- For every operation whose schedule arrived complete, the schedule must agree with the contract:
--- installments numbered 1..n, due dates strictly increasing, each installment = the contracted amount.
+-- Complete schedules must match the contract: installments 1..n, strictly increasing due dates,
+-- each installment equal to the contracted amount.
 
 with operations as (
 

@@ -1,8 +1,4 @@
-{#-
-    Grain: one row per installment. Shares dim_customers / dim_products / dim_date with
-    fct_credit_operations (fact constellation). Installments whose operation was quarantined
-    keep their row and point to the unknown members.
--#}
+{#- Grain: one installment. Installments whose operation was quarantined point to the unknown members. -#}
 
 with installments as (
 

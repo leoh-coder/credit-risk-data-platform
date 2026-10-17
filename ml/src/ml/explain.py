@@ -1,5 +1,4 @@
-"""Explainability for the logistic model: odds ratios, permutation importance and exact per-feature
-contributions (in log-odds) for an individual simulation."""
+"""Odds ratios, permutation importance and exact per-feature log-odds contributions."""
 
 from __future__ import annotations
 
@@ -21,8 +20,7 @@ def _original_feature(transformed_name: str) -> str:
 
 
 def odds_ratios(pipeline: Pipeline) -> pd.DataFrame:
-    """One row per model input: coefficient and odds ratio per +1 standard deviation (log-SD for money,
-    presence for a category level). Odds ratio > 1 raises the PD."""
+    """Coefficient and odds ratio per model input (per +1 SD; log-SD for money; a category vs. the rest)."""
     names = pipeline.named_steps["prep"].get_feature_names_out()
     coefficients = pipeline.named_steps["model"].coef_[0]
     table = pd.DataFrame(
@@ -37,8 +35,7 @@ def odds_ratios(pipeline: Pipeline) -> pd.DataFrame:
 
 
 def contributions(pipeline: Pipeline, row: pd.DataFrame) -> pd.Series:
-    """Exact additive decomposition of the log-odds for one applicant: intercept + one term per feature.
-    For a linear model coefficient x transformed value is the true contribution, not an approximation."""
+    """Log-odds of one applicant as intercept + one term per feature (exact for a linear model)."""
     if len(row) != 1:
         raise ValueError("contributions are computed for exactly one row")
     z = np.asarray(pipeline.named_steps["prep"].transform(row[list(FEATURES)]))[0]
@@ -49,7 +46,7 @@ def contributions(pipeline: Pipeline, row: pd.DataFrame) -> pd.Series:
 
 
 def permutation_importances(pipeline: Pipeline, X: pd.DataFrame, y, n_repeats: int = 10) -> pd.DataFrame:
-    """Drop in test AUC when one raw feature is shuffled (model-agnostic, measured out of time)."""
+    """AUC drop when one raw feature is shuffled."""
     result = permutation_importance(
         pipeline, X[list(FEATURES)], y, scoring="roc_auc", n_repeats=n_repeats, random_state=42
     )
