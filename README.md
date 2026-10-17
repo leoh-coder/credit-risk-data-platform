@@ -1,5 +1,7 @@
 # Credit Risk Data Platform
 
+[![CI](https://github.com/leoh-coder/credit-risk-data-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/leoh-coder/credit-risk-data-platform/actions/workflows/ci.yml)
+
 Batch data platform for retail credit risk. A synthetic core-banking source lands daily batches
 in an S3-compatible lake behind data contracts, a DuckDB loader moves committed dates into
 PostgreSQL, dbt builds a tested star schema, and a probability-of-default (PD) model and a
