@@ -1,4 +1,5 @@
-"""Out-of-time split on contract dates, bounded by the last contract that is mature for every product.
+"""Out-of-time train / validation / test split on contract dates, bounded by the last contract that is
+mature for every product.
 
 Contracts after that date are only mature for short products; they raise instead of being dropped.
 """
@@ -27,17 +28,25 @@ def max_mature_contract_date(
 
 
 def out_of_time_split(
-    frame: pd.DataFrame, max_contract_date: date, test_months: int = 3, date_column: str = "contract_date"
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Train on contracts up to max - test_months, test on the last test_months up to max."""
+    frame: pd.DataFrame,
+    max_contract_date: date,
+    validation_months: int = 3,
+    test_months: int = 3,
+    date_column: str = "contract_date",
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Train, validation and test periods, oldest to newest; test ends at max_contract_date."""
     dates = pd.to_datetime(frame[date_column]).dt.date
     if (dates > max_contract_date).any():
         raise ValueError(f"contracts after {max_contract_date} are not mature for every product")
 
     test_start = (pd.Timestamp(max_contract_date) - pd.DateOffset(months=test_months)).date()
-    train = frame.loc[dates <= test_start]
-    test = frame.loc[dates > test_start]
-    for name, part in (("train", train), ("test", test)):
+    validation_start = (pd.Timestamp(test_start) - pd.DateOffset(months=validation_months)).date()
+    parts = {
+        "train": frame.loc[dates <= validation_start],
+        "validation": frame.loc[(dates > validation_start) & (dates <= test_start)],
+        "test": frame.loc[dates > test_start],
+    }
+    for name, part in parts.items():
         if part.empty or part[TARGET].nunique() < 2:
             raise ValueError(f"{name} period needs both defaults and non-defaults")
-    return train, test
+    return parts["train"], parts["validation"], parts["test"]

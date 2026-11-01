@@ -41,17 +41,32 @@ def test_maturity_parameters_match_the_dbt_vars():
     assert int(dpd.group(1)) == DEFAULT_DPD
 
 
-@pytest.mark.parametrize("test_months", [2, 3])
-def test_out_of_time_split_never_mixes_periods(synthetic_population, test_months):
-    last = max_mature_contract_date(OBSERVATION)
-    train, test = out_of_time_split(synthetic_population, last, test_months=test_months)
-
+def _bounds(last: date, validation_months: int, test_months: int) -> tuple[date, date]:
     test_start = (pd.Timestamp(last) - pd.DateOffset(months=test_months)).date()
-    assert pd.to_datetime(train["contract_date"]).max().date() <= test_start
-    assert pd.to_datetime(test["contract_date"]).min().date() > test_start
-    assert pd.to_datetime(test["contract_date"]).max().date() <= last
-    assert set(train["operation_id"]).isdisjoint(test["operation_id"])
-    assert len(train) + len(test) == len(synthetic_population)
+    validation_start = (pd.Timestamp(test_start) - pd.DateOffset(months=validation_months)).date()
+    return validation_start, test_start
+
+
+@pytest.mark.parametrize(("validation_months", "test_months"), [(3, 3), (2, 4)])
+def test_out_of_time_split_never_mixes_the_three_periods(
+    synthetic_population, validation_months, test_months
+):
+    last = max_mature_contract_date(OBSERVATION)
+    train, validation, test = out_of_time_split(
+        synthetic_population, last, validation_months=validation_months, test_months=test_months
+    )
+
+    validation_start, test_start = _bounds(last, validation_months, test_months)
+    dates = {
+        name: pd.to_datetime(part["contract_date"]).dt.date
+        for name, part in (("train", train), ("validation", validation), ("test", test))
+    }
+    assert dates["train"].max() <= validation_start
+    assert validation_start < dates["validation"].min() and dates["validation"].max() <= test_start
+    assert test_start < dates["test"].min() and dates["test"].max() <= last
+    ids = [set(part["operation_id"]) for part in (train, validation, test)]
+    assert ids[0].isdisjoint(ids[1]) and ids[0].isdisjoint(ids[2]) and ids[1].isdisjoint(ids[2])
+    assert len(train) + len(validation) + len(test) == len(synthetic_population)
 
 
 def test_contracts_after_the_maturity_limit_are_refused(synthetic_population):
@@ -60,15 +75,19 @@ def test_contracts_after_the_maturity_limit_are_refused(synthetic_population):
         out_of_time_split(pd.concat([synthetic_population, late]), max_mature_contract_date(OBSERVATION))
 
 
-def test_a_period_without_defaults_is_refused(synthetic_population):
+@pytest.mark.parametrize("period", ["validation", "test"])
+def test_a_period_without_defaults_is_refused(synthetic_population, period):
     last = max_mature_contract_date(OBSERVATION)
-    test_start = (pd.Timestamp(last) - pd.DateOffset(months=3)).date()
-    in_test = pd.to_datetime(synthetic_population["contract_date"]).dt.date > test_start
-    no_defaults_in_test = synthetic_population.assign(
-        pd_label=np.where(in_test, 0, synthetic_population["pd_label"])
+    validation_start, test_start = _bounds(last, 3, 3)
+    dates = pd.to_datetime(synthetic_population["contract_date"]).dt.date
+    in_period = (
+        (dates > test_start) if period == "test" else ((dates > validation_start) & (dates <= test_start))
     )
-    with pytest.raises(ValueError, match="test period"):
-        out_of_time_split(no_defaults_in_test, last)
+    no_defaults = synthetic_population.assign(
+        pd_label=np.where(in_period, 0, synthetic_population["pd_label"])
+    )
+    with pytest.raises(ValueError, match=f"{period} period"):
+        out_of_time_split(no_defaults, last)
 
 
 def test_ks_gini_auc_on_a_hand_computed_example():

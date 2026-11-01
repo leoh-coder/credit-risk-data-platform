@@ -96,9 +96,12 @@ Each entry: the decision, why, and the alternative that was rejected.
 
 ## Model
 
-### D21. Out-of-time validation on mature cohorts only
-- **Why:** train on contracts before 2025-04-01, test on 2025-04-01 to 2025-07-17, the last date when every product is mature. Contracts after the limit raise an error instead of being dropped silently.
-- **Rejected:** a random split, which leaks the future into training and hides drift.
+### D21. Out-of-time train / validation / test on mature cohorts only
+- **Why:**
+  - **Maturity limit from the data.** The last contract date mature for every product is computed from the observation clock (`min(observed_at)` of the facts): observation - 90 days - 12 months, the same parameters as the dbt label (tested against the dbt vars). For the current data that is 2025-07-17. Later contracts raise instead of being dropped silently.
+  - **Three periods.** Test = the last `test_months` (3) before the limit, validation = the `validation_months` (3) before the test, train = everything earlier. Both sizes are parameters.
+  - **One look at the test.** Hyperparameters, feature-exclusion evidence and permutation importance use the validation period only. The chosen models are refit on train + validation and scored once on the test period. An earlier version tuned the comparison model and judged features on the test period, which made its metrics optimistic.
+- **Rejected:** a random split (leaks the future into training and hides drift) and a single train/test split used for tuning.
 
 ### D22. Explicit feature allowlist, enforced by tests
 - **Why:** 15 features known at the grant date. Outcome columns (`max_dpd_in_window`, `is_mature`, `window_*`, `label_status`, `pd_label`), keys and lineage are forbidden, and a test fails if any of them reaches the feature set. The population query is generated from the allowlist, so outcome columns are never fetched.
@@ -109,7 +112,7 @@ Each entry: the decision, why, and the alternative that was rejected.
   - **No feature may carry the bank's own price.** `interest_rate_monthly` comes from risk-based pricing on the bureau score: a model trained on it learns the bank's previous decisions (feedback loop) and drifts whenever pricing changes. An earlier version excluded the rate but kept `installment_amount` and `installment_to_income_ratio`. Since installment = principal x annuity(rate, term), the rate was recoverable from principal, term and installment, so that exclusion did not work. The installment, its ratio and `total_scheduled_amount` are now excluded too (`PRICE_DEPENDENT_COLUMNS`).
   - **Affordability without the price.** `reference_installment_to_income_ratio` is the installment at a fixed qualifying rate (dbt var `reference_rate_monthly` = 3% a month, at or above every payroll and vehicle contract rate) over income, in the spirit of a stress-test qualifying rate. It depends on principal, term and income only.
   - **Known residual.** For 543 of 6,681 payroll loans (8%) the source capped the principal with the 35% income-commitment rule, which uses the contract rate, so the principal itself carries some rate information for those loans. Removing it would need the requested (pre-cap) amount, which the source does not provide.
-  - **Proxies.** `email_domain`, `phone_area_code` and `state_code` are socio-economic or geographic proxies; the source assigns the state independently of risk.
+  - **Proxies.** `email_domain`, `phone_area_code` and `state_code` are socio-economic or geographic proxies; the source assigns the state independently of risk. The exclusion rests on that argument: the earlier evidence for dropping `state_code` came from the test period and is no longer used.
 - **Rejected:** keeping every available column and letting the model sort it out.
 
 ### D24. Logistic regression as the main model, one comparison model

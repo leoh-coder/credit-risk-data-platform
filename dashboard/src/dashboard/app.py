@@ -188,17 +188,21 @@ def risk_tab() -> None:
         "A term is coefficient x the standardized (log for money) value, relative to the training mean."
     )
 
-    st.subheader("Model performance (out-of-time test)")
+    st.subheader("Model performance (out of time)")
+    periods = ("train", "validation", "test")
     rows = []
     for name, model_metrics in artifacts.metrics["models"].items():
-        for period in ("train", "test"):
+        for period in periods:
             m = model_metrics[period]
             rows.append({"model": name, "period": period, **{k: m[k] for k in ("auc", "gini", "ks", "brier")}})
     st.dataframe(pd.DataFrame(rows).round(3), hide_index=True, width="stretch")
     split = artifacts.metrics["split"]
     st.caption(
-        f"Train {split['train']['from']}..{split['train']['to']} ({split['train']['rows']:,} contracts), "
-        f"test {split['test']['from']}..{split['test']['to']} ({split['test']['rows']:,}). Never a random split."
+        ", ".join(
+            f"{p} {split[p]['from']}..{split[p]['to']} ({split[p]['rows']:,} contracts)" for p in periods
+        ).capitalize()
+        + ". Hyperparameters are chosen on validation; the final model is refit on train + validation "
+        "and scored once on test. Never a random split."
     )
 
     left, right = st.columns(2)

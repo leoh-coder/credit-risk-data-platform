@@ -13,7 +13,7 @@ from ml.split import max_mature_contract_date, out_of_time_split
 
 @pytest.fixture(scope="module")
 def fitted(synthetic_population):
-    train, test = out_of_time_split(synthetic_population, max_mature_contract_date(date(2026, 10, 15)))
+    train, _, test = out_of_time_split(synthetic_population, max_mature_contract_date(date(2026, 10, 15)))
     model = logistic_pipeline().fit(feature_matrix(train), train[TARGET])
     return model, train, test
 

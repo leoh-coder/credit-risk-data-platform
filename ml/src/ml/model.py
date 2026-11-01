@@ -16,7 +16,7 @@ RANDOM_STATE = 42
 _OTHER_NUMERIC = tuple(c for c in NUMERIC_FEATURES if c not in MONEY_FEATURES)
 
 
-def logistic_pipeline() -> Pipeline:
+def logistic_pipeline(C: float = 1.0) -> Pipeline:
     money = Pipeline(
         [
             ("impute", SimpleImputer(strategy="median")),
@@ -33,10 +33,10 @@ def logistic_pipeline() -> Pipeline:
             ("cat", categorical, list(CATEGORICAL_FEATURES)),
         ]
     )
-    return Pipeline([("prep", prep), ("model", LogisticRegression(C=1.0, max_iter=2000))])
+    return Pipeline([("prep", prep), ("model", LogisticRegression(C=C, max_iter=2000))])
 
 
-def gradient_boosting_pipeline() -> Pipeline:
+def gradient_boosting_pipeline(max_depth: int = 3, min_samples_leaf: int = 100) -> Pipeline:
     encoder = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1, encoded_missing_value=-1)
     prep = ColumnTransformer(
         [("cat", encoder, list(CATEGORICAL_FEATURES)), ("num", "passthrough", list(NUMERIC_FEATURES))]
@@ -45,8 +45,8 @@ def gradient_boosting_pipeline() -> Pipeline:
     # validates on 10% of the training period, never on the test period.
     model = HistGradientBoostingClassifier(
         categorical_features=list(range(len(CATEGORICAL_FEATURES))),
-        max_depth=3,
-        min_samples_leaf=100,
+        max_depth=max_depth,
+        min_samples_leaf=min_samples_leaf,
         early_stopping=True,
         random_state=RANDOM_STATE,
     )
