@@ -18,28 +18,13 @@ import streamlit as st
 
 from dashboard import queries
 from dashboard.config import get_settings
-from dashboard.scoring import RISK_BANDS, applicant_frame, load_artifacts, risk_band, score
+from dashboard.scoring import RISK_BANDS, applicant_frame, load_artifacts, risk_band, score, simulation_fields
 from ml.features import CATEGORICAL_FEATURES, REFERENCE_CATEGORIES
 
 DQ_QUARANTINE_WARN_PCT, DQ_QUARANTINE_ERROR_PCT = 5, 10  # same budget as the dbt vars
 FRESHNESS_WARN_HOURS, FRESHNESS_ERROR_HOURS = 48, 168  # same as dbt source freshness
 DPD_ORDER = ["1-30", "31-60", "61-89", "90+"]
 
-# label, min, max, step for each simulated input (the reference ratio is derived, not typed)
-FIELDS: dict[str, tuple[str, float, float, float]] = {
-    "principal_amount": ("Principal (BRL)", 500.0, 500_000.0, 500.0),
-    "installments_count": ("Installments", 1, 120, 1),
-    "bureau_score_at_origination": ("Bureau score", 0, 1000, 10),
-    "age_at_registration": ("Age", 18, 100, 1),
-    "monthly_income": ("Monthly income (BRL)", 0.0, 200_000.0, 100.0),
-    "of_tx_count": ("Open Finance transactions (90 d)", 0, 2000, 1),
-    "of_salary_deposit_count": ("Salary deposits (90 d)", 0, 20, 1),
-    "of_monthly_inflow": ("Monthly inflow (BRL)", 0.0, 500_000.0, 100.0),
-    "of_monthly_outflow": ("Monthly outflow (BRL)", 0.0, 500_000.0, 100.0),
-    "of_inflow_to_income_ratio": ("Inflow / declared income", 0.0, 20.0, 0.05),
-    "of_betting_spend_share": ("Betting share of spend", 0.0, 1.0, 0.01),
-    "of_cash_withdrawal_share": ("Cash withdrawal share of spend", 0.0, 1.0, 0.01),
-}
 
 st.set_page_config(page_title="Credit Risk Data Platform", layout="wide")
 
@@ -150,14 +135,15 @@ def simulation_form(defaults: dict) -> dict:
         values[feature] = columns[i % 3].selectbox(
             feature.replace("_", " ").capitalize(), options, index=options.index(spec["default"]), key=feature
         )
-    for i, (feature, (label, low, high, step)) in enumerate(FIELDS.items(), start=len(CATEGORICAL_FEATURES)):
-        start = float(np.clip(defaults["numeric"][feature], low, high))
+    for i, field in enumerate(simulation_fields(), start=len(CATEGORICAL_FEATURES)):
+        low, high, step = field.min_value, field.max_value, field.step
+        start = float(np.clip(defaults["numeric"][field.feature], low, high))
         if isinstance(step, int):
-            values[feature] = columns[i % 3].number_input(
-                label, int(low), int(high), int(round(start)), int(step), key=feature
+            values[field.feature] = columns[i % 3].number_input(
+                field.label, int(low), int(high), round(start), step, key=field.feature
             )
         else:
-            values[feature] = columns[i % 3].number_input(label, low, high, start, step, key=feature)
+            values[field.feature] = columns[i % 3].number_input(field.label, low, high, start, step, key=field.feature)
     return values
 
 

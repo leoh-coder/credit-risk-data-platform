@@ -5,8 +5,16 @@ import pandas as pd
 import pytest
 
 from dashboard.queries import QUERIES
-from dashboard.scoring import RISK_BANDS, applicant_frame, load_artifacts, risk_band, score
-from ml.features import FEATURES
+from dashboard.scoring import (
+    FIELD_META,
+    RISK_BANDS,
+    applicant_frame,
+    load_artifacts,
+    risk_band,
+    score,
+    simulation_fields,
+)
+from ml.features import DERIVED_FEATURES, FEATURES, NUMERIC_FEATURES
 
 
 @pytest.mark.parametrize("name", sorted(QUERIES))
@@ -90,3 +98,25 @@ def test_fetch_turns_decimals_into_floats(monkeypatch):
     frame = queries.fetch("label_status", "postgresql://unused")
     assert frame["x"].dtype == float
     assert frame["y"].tolist() == ["a"]
+
+
+def test_every_non_derived_numeric_feature_has_a_simulation_field():
+    typed = {field.feature for field in simulation_fields()}
+    assert typed == set(NUMERIC_FEATURES) - set(DERIVED_FEATURES)
+
+
+def test_derived_features_are_computed_from_typed_fields():
+    typed = {field.feature for field in simulation_fields()}
+    for inputs in DERIVED_FEATURES.values():
+        assert set(inputs) <= typed
+
+
+def test_field_metadata_has_no_stale_entries():
+    assert set(FIELD_META) <= set(NUMERIC_FEATURES) - set(DERIVED_FEATURES)
+
+
+def test_a_new_feature_without_metadata_still_gets_a_field():
+    fields = simulation_fields(numeric_features=(*NUMERIC_FEATURES, "brand_new_ratio"))
+    new = next(field for field in fields if field.feature == "brand_new_ratio")
+    assert new.label == "Brand new ratio"
+    assert new.min_value <= new.max_value
