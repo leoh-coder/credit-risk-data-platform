@@ -89,7 +89,22 @@ def fake_marts() -> dict[str, pd.DataFrame]:
             ]
         ),
         "cohort_default": pd.DataFrame(
-            [{"year_month": m, "product_type": p, "labeled": 35, "defaults": 4} for m in months for p in products]
+            [
+                {"year_month": m, "product_type": p, "labeled": 35, "defaults": 4, "immature": 0}
+                for m in months
+                for p in products
+            ]
+            # a recent cohort: only short personal loans are labeled, the other products are immature
+            + [
+                {
+                    "year_month": "2025-08",
+                    "product_type": "personal_loan",
+                    "labeled": 35,
+                    "defaults": 20,
+                    "immature": 0,
+                },
+                {"year_month": "2025-08", "product_type": "payroll_loan", "labeled": 0, "defaults": 0, "immature": 40},
+            ]
         ),
         "label_status": pd.DataFrame(
             {"label_status": ["immature", "incomplete_schedule", "labeled"], "contracts": [50, 5, 105]}

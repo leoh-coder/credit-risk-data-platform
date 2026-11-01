@@ -45,7 +45,8 @@ QUERIES: dict[str, str] = {
             d.year_month,
             p.product_type,
             sum(case when f.label_status = 'labeled' then 1 else 0 end)            as labeled,
-            sum(case when f.label_status = 'labeled' then f.pd_label else 0 end)   as defaults
+            sum(case when f.label_status = 'labeled' then f.pd_label else 0 end)   as defaults,
+            sum(case when f.is_mature then 0 else 1 end)                           as immature
         from marts.fct_credit_operations as f
         inner join marts.dim_date as d on d.date_key = f.contract_date_key
         inner join marts.dim_products as p using (product_key)

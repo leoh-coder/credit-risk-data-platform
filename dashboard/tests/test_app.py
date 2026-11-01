@@ -34,7 +34,8 @@ def test_all_three_tabs_render_without_exceptions(app):
     assert not app.exception
     assert [t.label for t in app.tabs] == ["Engineering", "Portfolio", "Risk simulation"]
     assert metric(app, "Dates loaded") == "10"
-    assert metric(app, "Default rate (labeled)") == "11.4%"  # 36 defaults / 315 labeled
+    # 36 defaults / 315 labeled: the 2025-08 cohort is left out because payroll loans there are immature
+    assert metric(app, "Default rate (mature cohorts)") == "11.4%"
     assert any("4 entity-dates above" in c.value for c in app.caption)
 
 

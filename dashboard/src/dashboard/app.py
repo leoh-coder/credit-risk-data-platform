@@ -103,12 +103,19 @@ def portfolio_tab() -> None:
     if any(frame is None for frame in (monthly, cohorts, labels, aging)):
         return
 
-    labeled, defaults = cohorts["labeled"].sum(), cohorts["defaults"].sum()
+    # Recent cohorts only label short products, so their mix would bias the rate: keep fully mature cohorts.
+    immature_months = set(cohorts.loc[cohorts["immature"] > 0, "year_month"])
+    mature_cohorts = cohorts[~cohorts["year_month"].isin(immature_months)]
+    labeled, defaults = mature_cohorts["labeled"].sum(), mature_cohorts["defaults"].sum()
     a, b, c, d = st.columns(4)
     a.metric("Contracts", f"{int(monthly['contracts'].sum()):,}")
     b.metric("Principal (BRL)", f"{monthly['principal_amount'].sum() / 1e6:,.1f} M")
-    c.metric("Labeled contracts", f"{int(labeled):,}")
-    d.metric("Default rate (labeled)", f"{defaults / labeled:.1%}" if labeled else "n/a")
+    c.metric("Labeled contracts", f"{int(cohorts['labeled'].sum()):,}")
+    d.metric("Default rate (mature cohorts)", f"{defaults / labeled:.1%}" if labeled else "n/a")
+    st.caption(
+        f"Default rate over the {mature_cohorts['year_month'].nunique()} cohorts in which every product is mature "
+        f"({int(labeled):,} labeled contracts)."
+    )
 
     st.subheader("Contracts per month and product")
     st.plotly_chart(px.bar(monthly, x="year_month", y="contracts", color="product_type"), width="stretch")
