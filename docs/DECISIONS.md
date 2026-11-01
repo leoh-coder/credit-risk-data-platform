@@ -76,8 +76,8 @@ Each entry: the decision, why, and the alternative that was rejected.
 - **Rejected:** one wide fact mixing grains, which double-counts amounts.
 
 ### D17. No imputation of the label
-- **Why:** `pd_label` is NULL with a `label_status` (`immature`, `incomplete_schedule`). A gap in the window can confirm an already observed default but never a good outcome. Delinquency and maturity use the extraction clock, never `current_date`. Window and threshold are dbt vars.
-- **Rejected:** treating immature or partially observed contracts as good payers (right-censoring bias).
+- **Why:** `pd_label` is NULL with a `label_status` (`immature`, `incomplete_schedule`). The rule is symmetric: a window with a quarantined installment is never labeled, even if a default was observed in it (`has_defaulted_to_date` still records it for monitoring). An earlier version labeled those defaults as 1 while dropping the goods with gaps, which kept 160 extra defaults and raised the training default rate from 11.2% to 12.3%. Delinquency and maturity use the extraction clock, never `current_date`. Window and threshold are dbt vars.
+- **Rejected:** treating immature or partially observed contracts as good payers (right-censoring bias), and labeling only the defaults of incomplete windows (selection bias).
 
 ### D18. Portable SQL where a macro exists
 - **Why:** `dbt_utils.date_spine` instead of `generate_series` (not supported on Redshift data tables), `dbt.dateadd` instead of `make_interval`, `SUM(CASE ...)` instead of `FILTER (WHERE ...)`, `ROW_NUMBER()` instead of `DISTINCT ON`. What remains Postgres-specific is listed in the README.

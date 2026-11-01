@@ -13,14 +13,14 @@ unpaid and not yet due -> 0 (nothing owed yet, which is NOT evidence of good beh
 {% docs pd_label %}
 Probability-of-default target. 1 = DPD >= `pd_default_dpd` (90) on any of the first
 `pd_window_installments` (12, or fewer for shorter contracts) installments; 0 = the whole window was
-observed without reaching it; NULL = not labelable yet, see `label_status`.
-Only mature contracts are labeled, so recent cohorts never over-represent early defaults.
+observed without reaching it; NULL = not labelable, see `label_status`.
+Only mature, complete windows are labeled, so neither recent cohorts nor gaps over-represent defaults.
 {% enddocs %}
 
 {% docs label_status %}
 Why `pd_label` is (or is not) set: `labeled`; `immature` (the window plus the DPD threshold has not
 elapsed at the observation clock); `incomplete_schedule` (an installment of the window was quarantined
-in the lake, so a good outcome cannot be proven; an already observed default is still labeled 1).
+in the lake; never labeled, even when a default was observed: use `has_defaulted_to_date` for that).
 {% enddocs %}
 
 {% docs unknown_member %}
