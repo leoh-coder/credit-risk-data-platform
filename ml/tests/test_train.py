@@ -63,9 +63,17 @@ def test_population_query_filters_labeled_known_mature_contracts():
     sql = population_sql()
     assert "label_status = 'labeled'" in sql
     assert "not c.is_unknown_member" in sql
-    assert ":max_contract_date" in sql
 
 
 def test_calibration_artifact_has_ten_bins(synthetic_population, tmp_path):
     train(synthetic_population, tmp_path)
     assert len(pd.read_csv(tmp_path / "calibration.csv")) == 10
+
+
+def test_contracts_after_the_maturity_limit_never_reach_training(synthetic_population, tmp_path):
+    late = synthetic_population.head(50).assign(contract_date=pd.Timestamp("2025-09-01"), operation_id="late")
+    report = train(pd.concat([synthetic_population, late], ignore_index=True), tmp_path)
+
+    assert report["split"]["max_contract_date"] == "2025-07-17"
+    assert report["split"]["test"]["to"] <= "2025-07-17"
+    assert report["split"]["train"]["rows"] + report["split"]["test"]["rows"] == len(synthetic_population)

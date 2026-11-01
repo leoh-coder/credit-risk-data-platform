@@ -31,7 +31,7 @@ from ml.features import (
 )
 from ml.metrics import calibration_table, evaluate
 from ml.model import gradient_boosting_pipeline, logistic_pipeline
-from ml.split import MAX_CONTRACT_DATE, TEST_START, out_of_time_split
+from ml.split import max_mature_contract_date, out_of_time_split
 
 logger = logging.getLogger("ml")
 
@@ -45,8 +45,11 @@ def evaluate_counts(frame: pd.DataFrame) -> dict:
     return {"rows": int(len(frame)), "defaults": int(frame[TARGET].sum())}
 
 
-def train(population: pd.DataFrame, artifacts_dir: Path) -> dict:
-    train_df, test_df = out_of_time_split(population)
+def train(population: pd.DataFrame, artifacts_dir: Path, test_months: int = 3) -> dict:
+    observation_date = pd.to_datetime(population["observed_at"]).min().date()
+    max_contract_date = max_mature_contract_date(observation_date)
+    mature = population.loc[pd.to_datetime(population["contract_date"]).dt.date <= max_contract_date]
+    train_df, test_df = out_of_time_split(mature, max_contract_date, test_months=test_months)
     X_train, y_train = feature_matrix(train_df), train_df[TARGET]
     X_test, y_test = feature_matrix(test_df), test_df[TARGET]
 
@@ -67,8 +70,9 @@ def train(population: pd.DataFrame, artifacts_dir: Path) -> dict:
         "population": "fct_credit_operations x dim_customers, label_status = 'labeled', known customers",
         "split": {
             "type": "out_of_time",
-            "test_start": str(TEST_START),
-            "max_contract_date": str(MAX_CONTRACT_DATE),
+            "observation_date": str(observation_date),
+            "max_contract_date": str(max_contract_date),
+            "test_months": test_months,
             "train": _period(train_df),
             "test": _period(test_df),
         },
@@ -182,7 +186,7 @@ def main(argv: list[str] | None = None) -> int:
     logger.info(
         "population: %d labeled contracts, %d defaults", len(population), int(population[TARGET].sum())
     )
-    report = train(population, Path(settings.artifacts_dir))
+    report = train(population, Path(settings.artifacts_dir), test_months=settings.test_months)
     test = report["models"]["logistic_regression"]["test"]
     logger.info("out-of-time test: AUC %.3f | Gini %.3f | KS %.3f", test["auc"], test["gini"], test["ks"])
     return 0

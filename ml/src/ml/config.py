@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     ml_reader_password: str = ""
 
     artifacts_dir: str = "./data/ml_artifacts"
+    test_months: int = 3
 
     @property
     def database_url(self) -> URL:

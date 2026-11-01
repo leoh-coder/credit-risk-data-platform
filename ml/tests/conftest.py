@@ -44,6 +44,7 @@ def synthetic_population() -> pd.DataFrame:
     frame[TARGET] = (rng.random(n) < 1 / (1 + np.exp(-logit))).astype(int)
     frame["contract_date"] = pd.to_datetime("2024-07-01") + pd.to_timedelta(rng.integers(0, 382, n), unit="D")
     frame["operation_id"] = [f"OPR{i:07d}" for i in range(n)]
+    frame["observed_at"] = pd.Timestamp("2026-10-15 23:59:59")  # the warehouse extraction clock
     frame["max_dpd_in_window"] = np.where(
         frame[TARGET] == 1, 120, 0
     )  # outcome column the model must never see

@@ -1,3 +1,5 @@
+from datetime import date
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -6,12 +8,12 @@ from ml.explain import contributions, odds_ratios, permutation_importances
 from ml.features import FEATURES, TARGET, feature_matrix
 from ml.metrics import evaluate
 from ml.model import gradient_boosting_pipeline, logistic_pipeline
-from ml.split import out_of_time_split
+from ml.split import max_mature_contract_date, out_of_time_split
 
 
 @pytest.fixture(scope="module")
 def fitted(synthetic_population):
-    train, test = out_of_time_split(synthetic_population)
+    train, test = out_of_time_split(synthetic_population, max_mature_contract_date(date(2026, 10, 15)))
     model = logistic_pipeline().fit(feature_matrix(train), train[TARGET])
     return model, train, test
 
