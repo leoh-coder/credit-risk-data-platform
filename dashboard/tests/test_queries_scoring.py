@@ -54,6 +54,11 @@ def test_missing_artifacts_mean_no_model_not_an_error(tmp_path):
     assert load_artifacts(tmp_path) is None
 
 
+def test_artifacts_trained_on_another_feature_list_are_out_of_date(artifacts_dir, outdated_artifacts_dir):
+    assert load_artifacts(artifacts_dir).is_current
+    assert not load_artifacts(outdated_artifacts_dir).is_current
+
+
 def test_score_returns_a_pd_and_contributions_that_add_up(artifacts_dir):
     artifacts = load_artifacts(artifacts_dir)
     defaults = artifacts.simulation_defaults

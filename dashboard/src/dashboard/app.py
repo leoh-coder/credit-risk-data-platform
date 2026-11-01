@@ -160,6 +160,9 @@ def risk_tab() -> None:
     if artifacts is None:
         st.info("No trained model found. Train it with `make train` (writes the artifacts this tab reads).")
         return
+    if not artifacts.is_current:
+        st.warning("Model artifacts are out of date: run `make train`")
+        return
 
     st.subheader("Simulate an applicant")
     values = simulation_form(artifacts.simulation_defaults)

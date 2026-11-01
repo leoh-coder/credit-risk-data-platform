@@ -57,6 +57,14 @@ def test_without_a_trained_model_the_tab_explains_instead_of_failing(app, monkey
     assert any("make train" in i.value for i in app.info)
 
 
+def test_artifacts_of_an_older_model_are_reported_instead_of_failing(app, monkeypatch, outdated_artifacts_dir):
+    monkeypatch.setenv("ARTIFACTS_DIR", str(outdated_artifacts_dir))
+    get_settings.cache_clear()
+    app.run()
+    assert not app.exception
+    assert any("Model artifacts are out of date: run `make train`" in w.value for w in app.warning)
+
+
 def test_a_warehouse_outage_is_reported_not_raised(app, monkeypatch):
     def down(name, url):
         raise ConnectionError("connection refused")

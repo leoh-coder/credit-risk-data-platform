@@ -264,7 +264,7 @@ make test lint
 | `ingestion` | 26 | Includes the S3 code path against a moto emulator |
 | `loader` | 15 | Real Postgres, with a throwaway database per test (skipped locally if unreachable; fails in CI) |
 | `ml` | 72 | Allowlist and leakage, split limits, metrics on hand-computed cases, exact contributions, artifacts |
-| `dashboard` | 29 | Marts-only queries, scoring, and the whole app run headless with `AppTest` |
+| `dashboard` | 31 | Marts-only queries, scoring, and the whole app run headless with `AppTest` |
 | dbt | 130 nodes | Run by `make transform` |
 
 CI (GitHub Actions) runs ruff and pytest per package. A compose smoke run then covers a 3-day

@@ -1,10 +1,16 @@
+import json
+import shutil
 from datetime import date, datetime, timedelta
 
+import joblib
 import numpy as np
 import pandas as pd
 import pytest
+from sklearn.compose import ColumnTransformer
+from sklearn.linear_model import LogisticRegression
+from sklearn.pipeline import Pipeline
 
-from ml.features import TARGET, reference_installment_to_income_ratio
+from ml.features import FEATURES, TARGET, reference_installment_to_income_ratio
 from ml.train import train
 
 
@@ -45,6 +51,28 @@ def artifacts_dir(tmp_path_factory):
     target = tmp_path_factory.mktemp("ml_artifacts")
     train(frame, target)
     return target
+
+
+@pytest.fixture
+def outdated_artifacts_dir(artifacts_dir, tmp_path):
+    """Artifacts left in the ml-artifacts volume by a model trained on an older feature list (v1.0.0)."""
+    outdated = tmp_path / "outdated_artifacts"
+    shutil.copytree(artifacts_dir, outdated)
+    old = Pipeline(
+        [("prep", ColumnTransformer([("num", "passthrough", ["installment_amount"])])), ("model", LogisticRegression())]
+    )
+    old.fit(pd.DataFrame({"installment_amount": [100.0, 200.0, 300.0, 400.0]}), [0, 0, 1, 1])
+    joblib.dump(old, outdated / "model.joblib")
+    metrics = json.loads((outdated / "metrics.json").read_text())
+    metrics["features"] = [f for f in FEATURES if f != "reference_installment_to_income_ratio"] + [
+        "installment_amount",
+        "installment_to_income_ratio",
+    ]
+    metrics["split"].pop("validation")  # v1.0.0 had no validation period
+    for model_metrics in metrics["models"].values():
+        model_metrics.pop("validation")
+    (outdated / "metrics.json").write_text(json.dumps(metrics))
+    return outdated
 
 
 def fake_marts() -> dict[str, pd.DataFrame]:

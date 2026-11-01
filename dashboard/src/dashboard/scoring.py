@@ -72,6 +72,11 @@ class ModelArtifacts:
     permutation_importance: pd.DataFrame
     calibration: pd.DataFrame
 
+    @property
+    def is_current(self) -> bool:
+        """False when the artifacts come from a model trained on another feature list (an older volume)."""
+        return self.metrics.get("features") == list(FEATURES)
+
 
 def load_artifacts(artifacts_dir: str | Path) -> ModelArtifacts | None:
     """None when the model has not been trained yet."""
