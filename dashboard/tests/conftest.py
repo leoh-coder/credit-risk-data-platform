@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ml.features import TARGET
+from ml.features import TARGET, reference_installment_to_income_ratio
 from ml.train import train
 
 
@@ -14,13 +14,16 @@ def artifacts_dir(tmp_path_factory):
     rng = np.random.default_rng(3)
     n = 2500
     income = rng.lognormal(8.2, 0.5, n)
-    installment = rng.lognormal(6, 0.5, n)
+    principal = rng.lognormal(9, 0.6, n)
+    installments = rng.choice([6, 12, 24, 48], n)
     frame = pd.DataFrame(
         {
-            "principal_amount": rng.lognormal(9, 0.6, n),
-            "installments_count": rng.choice([6, 12, 24, 48], n),
-            "installment_amount": installment,
-            "installment_to_income_ratio": installment / income,
+            "principal_amount": principal,
+            "installments_count": installments,
+            "reference_installment_to_income_ratio": [
+                reference_installment_to_income_ratio(p, k, i)
+                for p, k, i in zip(principal, installments, income, strict=True)
+            ],
             "bureau_score_at_origination": rng.integers(200, 1000, n),
             "age_at_registration": rng.integers(18, 80, n),
             "monthly_income": income,

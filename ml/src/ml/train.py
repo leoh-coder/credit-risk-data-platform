@@ -161,7 +161,8 @@ Test by product (logistic):
 {features}
 
 Never used (outcome, identifier or lineage columns): {forbidden}.
-Excluded on purpose: `interest_rate_monthly` (output of the bank's own pricing: feedback loop),
+Excluded on purpose: the contract rate, the installment and installment-based amounts (they embed the
+bank's risk-based price; affordability uses the installment at a fixed reference rate instead), and
 `email_domain`, `phone_area_code` and `state_code` (socio-economic / geographic proxies).
 
 ## Limitations

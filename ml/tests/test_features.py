@@ -1,3 +1,7 @@
+import re
+from pathlib import Path
+
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -8,10 +12,13 @@ from ml.features import (
     FORBIDDEN_COLUMNS,
     MONEY_FEATURES,
     NUMERIC_FEATURES,
+    PRICE_DEPENDENT_COLUMNS,
+    REFERENCE_RATE_MONTHLY,
     TARGET,
     LeakageError,
     check_feature_list,
     feature_matrix,
+    reference_installment_to_income_ratio,
 )
 
 # Outcome columns that must stay forbidden, whatever else changes.
@@ -82,3 +89,29 @@ def test_feature_matrix_fails_loudly_when_an_allowlisted_column_is_missing():
     frame = pd.DataFrame([dict.fromkeys(FEATURES[1:], 1)])
     with pytest.raises(KeyError):
         feature_matrix(frame)
+
+
+def test_no_feature_depends_on_the_contract_rate():
+    # The contract rate is the bank's own risk-based price; installment and its ratios embed it.
+    assert not PRICE_DEPENDENT_COLUMNS & set(FEATURES)
+    assert PRICE_DEPENDENT_COLUMNS <= EXCLUDED_ON_PURPOSE
+    assert "reference_installment_to_income_ratio" in FEATURES
+
+
+def test_reference_rate_matches_the_dbt_var():
+    project = Path(__file__).resolve().parents[2] / "dbt" / "credit_risk" / "dbt_project.yml"
+    value = re.search(r"^\s*reference_rate_monthly:\s*([0-9.]+)", project.read_text(encoding="utf-8"), re.M)
+    assert value and float(value.group(1)) == REFERENCE_RATE_MONTHLY
+
+
+@pytest.mark.parametrize(
+    ("principal", "installments", "income", "expected"),
+    [(10_000, 12, 5_000, 0.2009), (10_000, 24, 5_000, 0.1181)],  # same fixtures as the dbt unit test
+)
+def test_reference_ratio_matches_the_dbt_formula(principal, installments, income, expected):
+    ratio = reference_installment_to_income_ratio(principal, installments, income, rate=0.03)
+    assert round(ratio, 4) == expected
+
+
+def test_reference_ratio_is_undefined_without_income():
+    assert np.isnan(reference_installment_to_income_ratio(10_000, 12, 0))

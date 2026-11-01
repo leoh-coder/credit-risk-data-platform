@@ -15,8 +15,7 @@ from ml.split import MAX_CONTRACT_DATE
 FEATURE_SOURCE = {
     "principal_amount": "f",
     "installments_count": "f",
-    "installment_amount": "f",
-    "installment_to_income_ratio": "f",
+    "reference_installment_to_income_ratio": "f",
     "bureau_score_at_origination": "f",
     "product_type": "p",
     "employment_type": "c",

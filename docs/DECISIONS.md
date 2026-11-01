@@ -101,11 +101,15 @@ Each entry: the decision, why, and the alternative that was rejected.
 - **Rejected:** a random split, which leaks the future into training and hides drift.
 
 ### D22. Explicit feature allowlist, enforced by tests
-- **Why:** 16 features known at the grant date. Outcome columns (`max_dpd_in_window`, `is_mature`, `window_*`, `label_status`, `pd_label`), keys and lineage are forbidden, and a test fails if any of them reaches the feature set. The population query is generated from the allowlist, so outcome columns are never fetched.
+- **Why:** 15 features known at the grant date. Outcome columns (`max_dpd_in_window`, `is_mature`, `window_*`, `label_status`, `pd_label`), keys and lineage are forbidden, and a test fails if any of them reaches the feature set. The population query is generated from the allowlist, so outcome columns are never fetched.
 - **Rejected:** a denylist, which lets every new column in by default.
 
 ### D23. Columns excluded on purpose, although known at the grant date
-- **Why:** `interest_rate_monthly` is the output of the bank's own risk-based pricing (feedback loop); `email_domain`, `phone_area_code` and `state_code` are socio-economic or geographic proxies. `state_code` was removed after the first training: the source assigns it independently of risk, yet it received odds ratios up to 1.6.
+- **Why:**
+  - **No feature may carry the bank's own price.** `interest_rate_monthly` comes from risk-based pricing on the bureau score: a model trained on it learns the bank's previous decisions (feedback loop) and drifts whenever pricing changes. An earlier version excluded the rate but kept `installment_amount` and `installment_to_income_ratio`. Since installment = principal x annuity(rate, term), the rate was recoverable from principal, term and installment, so that exclusion did not work. The installment, its ratio and `total_scheduled_amount` are now excluded too (`PRICE_DEPENDENT_COLUMNS`).
+  - **Affordability without the price.** `reference_installment_to_income_ratio` is the installment at a fixed qualifying rate (dbt var `reference_rate_monthly` = 3% a month, at or above every payroll and vehicle contract rate) over income, in the spirit of a stress-test qualifying rate. It depends on principal, term and income only.
+  - **Known residual.** For 543 of 6,681 payroll loans (8%) the source capped the principal with the 35% income-commitment rule, which uses the contract rate, so the principal itself carries some rate information for those loans. Removing it would need the requested (pre-cap) amount, which the source does not provide.
+  - **Proxies.** `email_domain`, `phone_area_code` and `state_code` are socio-economic or geographic proxies; the source assigns the state independently of risk.
 - **Rejected:** keeping every available column and letting the model sort it out.
 
 ### D24. Logistic regression as the main model, one comparison model

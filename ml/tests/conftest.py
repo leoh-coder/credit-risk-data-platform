@@ -15,8 +15,7 @@ def synthetic_population() -> pd.DataFrame:
         {
             "principal_amount": rng.lognormal(9, 0.6, n),
             "installments_count": rng.choice([6, 12, 24, 48], n),
-            "installment_amount": rng.lognormal(6, 0.5, n),
-            "installment_to_income_ratio": rng.uniform(0.02, 0.4, n),
+            "reference_installment_to_income_ratio": rng.uniform(0.02, 0.4, n),
             "bureau_score_at_origination": rng.integers(200, 1000, n),
             "age_at_registration": rng.integers(18, 80, n),
             "monthly_income": rng.lognormal(8.2, 0.5, n),

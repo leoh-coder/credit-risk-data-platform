@@ -6,6 +6,7 @@ docs/DECISIONS.md (D22, D23).
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 TARGET = "pd_label"
@@ -14,8 +15,7 @@ TARGET = "pd_label"
 _CONTRACT_NUMERIC = (
     "principal_amount",
     "installments_count",
-    "installment_amount",
-    "installment_to_income_ratio",
+    "reference_installment_to_income_ratio",
     "bureau_score_at_origination",
 )
 # Customer attributes at onboarding (dim_customers), incl. the pre-application Open Finance history.
@@ -38,17 +38,30 @@ FEATURES: tuple[str, ...] = NUMERIC_FEATURES + CATEGORICAL_FEATURES
 # Right-skewed BRL amounts: log1p before scaling.
 MONEY_FEATURES: tuple[str, ...] = (
     "principal_amount",
-    "installment_amount",
     "monthly_income",
     "of_monthly_inflow",
     "of_monthly_outflow",
 )
 
-# Known at the grant date but left out: the bank's own risk-based price (feedback loop) and
-# socio-economic / geographic proxies.
-EXCLUDED_ON_PURPOSE: frozenset[str] = frozenset(
-    {"interest_rate_monthly", "email_domain", "phone_area_code", "state_code"}
+# The contract rate is the bank's own risk-based price; the installment and its ratios embed it.
+PRICE_DEPENDENT_COLUMNS: frozenset[str] = frozenset(
+    {"interest_rate_monthly", "installment_amount", "installment_to_income_ratio", "total_scheduled_amount"}
 )
+
+# Known at the grant date but left out: the price (feedback loop) and socio-economic / geographic proxies.
+EXCLUDED_ON_PURPOSE: frozenset[str] = PRICE_DEPENDENT_COLUMNS | {
+    "email_domain",
+    "phone_area_code",
+    "state_code",
+}
+
+# Must match the dbt var reference_rate_monthly (tested).
+REFERENCE_RATE_MONTHLY = 0.03
+
+# Features computed from other inputs, with the inputs they need (the dashboard derives them).
+DERIVED_FEATURES: dict[str, tuple[str, ...]] = {
+    "reference_installment_to_income_ratio": ("principal_amount", "installments_count", "monthly_income"),
+}
 
 FORBIDDEN_COLUMNS: frozenset[str] = frozenset(
     {
@@ -76,6 +89,15 @@ FORBIDDEN_COLUMNS: frozenset[str] = frozenset(
         "observed_at",
     }
 )
+
+
+def reference_installment_to_income_ratio(
+    principal: float, installments: int, monthly_income: float, rate: float = REFERENCE_RATE_MONTHLY
+) -> float:
+    """Installment at the reference rate over income, as in fct_credit_operations; NaN without income."""
+    if not monthly_income or monthly_income <= 0:
+        return np.nan
+    return principal * rate / (1 - (1 + rate) ** -installments) / monthly_income
 
 
 class LeakageError(ValueError):

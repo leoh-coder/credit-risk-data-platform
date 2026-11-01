@@ -7,12 +7,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import joblib
-import numpy as np
 import pandas as pd
 from sklearn.pipeline import Pipeline
 
 from ml.explain import contributions
-from ml.features import FEATURES, feature_matrix
+from ml.features import FEATURES, feature_matrix, reference_installment_to_income_ratio
 
 # Display-only grades for the simulated PD (not a credit policy).
 RISK_BANDS: tuple[tuple[str, float], ...] = (("A", 0.02), ("B", 0.05), ("C", 0.10), ("D", 0.20), ("E", 1.01))
@@ -44,10 +43,11 @@ def load_artifacts(artifacts_dir: str | Path) -> ModelArtifacts | None:
 
 
 def applicant_frame(values: dict) -> pd.DataFrame:
-    """One applicant as the model expects it; the ratio is derived as in fct_credit_operations."""
+    """One applicant as the model expects it; derived features are computed as in fct_credit_operations."""
     row = dict(values)
-    income = row.get("monthly_income") or 0
-    row["installment_to_income_ratio"] = row["installment_amount"] / income if income > 0 else np.nan
+    row["reference_installment_to_income_ratio"] = reference_installment_to_income_ratio(
+        row["principal_amount"], row["installments_count"], row.get("monthly_income") or 0
+    )
     return feature_matrix(pd.DataFrame([row]))
 
 

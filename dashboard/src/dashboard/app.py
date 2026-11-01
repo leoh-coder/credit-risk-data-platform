@@ -18,18 +18,17 @@ import streamlit as st
 
 from dashboard import queries
 from dashboard.config import get_settings
-from dashboard.scoring import RISK_BANDS, load_artifacts, risk_band, score
+from dashboard.scoring import RISK_BANDS, applicant_frame, load_artifacts, risk_band, score
 from ml.features import CATEGORICAL_FEATURES
 
 DQ_QUARANTINE_WARN_PCT, DQ_QUARANTINE_ERROR_PCT = 5, 10  # same budget as the dbt vars
 FRESHNESS_WARN_HOURS, FRESHNESS_ERROR_HOURS = 48, 168  # same as dbt source freshness
 DPD_ORDER = ["1-30", "31-60", "61-89", "90+"]
 
-# label, min, max, step for each simulated input (installment_to_income_ratio is derived, not typed)
+# label, min, max, step for each simulated input (the reference ratio is derived, not typed)
 FIELDS: dict[str, tuple[str, float, float, float]] = {
     "principal_amount": ("Principal (BRL)", 500.0, 500_000.0, 500.0),
     "installments_count": ("Installments", 1, 120, 1),
-    "installment_amount": ("Installment (BRL)", 10.0, 50_000.0, 10.0),
     "bureau_score_at_origination": ("Bureau score", 0, 1000, 10),
     "age_at_registration": ("Age", 18, 100, 1),
     "monthly_income": ("Monthly income (BRL)", 0.0, 200_000.0, 100.0),
@@ -176,8 +175,8 @@ def risk_tab() -> None:
     a, b, c = st.columns(3)
     a.metric("Probability of default", f"{pd_hat:.1%}")
     b.metric("Risk band", risk_band(pd_hat))
-    ratio = values["installment_amount"] / values["monthly_income"] if values["monthly_income"] else float("nan")
-    c.metric("Installment / income (derived)", f"{ratio:.1%}")
+    ratio = applicant_frame(values).at[0, "reference_installment_to_income_ratio"]
+    c.metric("Installment / income at the reference rate", f"{ratio:.1%}")
     st.caption(
         "Bands: " + ", ".join(f"{band} < {upper:.0%}" for band, upper in RISK_BANDS[:-1]) + ", E otherwise "
         "(display only, not a credit policy)."

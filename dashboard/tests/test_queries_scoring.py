@@ -22,11 +22,16 @@ def test_no_query_touches_outcome_columns_as_inputs_to_scoring():
     assert list(row.columns) == list(FEATURES)
 
 
-def test_installment_to_income_ratio_is_derived_not_typed():
-    values = dict.fromkeys(FEATURES, 1.0) | {"installment_amount": 500.0, "monthly_income": 2000.0}
-    values["installment_to_income_ratio"] = 99.0  # anything typed is overwritten
-    assert applicant_frame(values).at[0, "installment_to_income_ratio"] == pytest.approx(0.25)
-    assert np.isnan(applicant_frame(values | {"monthly_income": 0.0}).at[0, "installment_to_income_ratio"])
+def test_reference_ratio_is_derived_not_typed():
+    values = dict.fromkeys(FEATURES, 1.0) | {
+        "principal_amount": 10_000.0,
+        "installments_count": 12,
+        "monthly_income": 5_000.0,
+    }
+    values["reference_installment_to_income_ratio"] = 99.0  # anything typed is overwritten
+    assert applicant_frame(values).at[0, "reference_installment_to_income_ratio"] == pytest.approx(0.2009, abs=1e-4)
+    no_income = applicant_frame(values | {"monthly_income": 0.0})
+    assert np.isnan(no_income.at[0, "reference_installment_to_income_ratio"])
 
 
 @pytest.mark.parametrize(
