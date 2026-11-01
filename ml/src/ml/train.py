@@ -27,6 +27,7 @@ from ml.features import (
     FEATURES,
     FORBIDDEN_COLUMNS,
     NUMERIC_FEATURES,
+    REFERENCE_CATEGORIES,
     TARGET,
     feature_matrix,
 )
@@ -176,6 +177,7 @@ def model_card(report: dict) -> str:
     products = "\n".join(row(product, m) for product, m in lr["test_by_product"].items())
     features = ", ".join(f"`{f}`" for f in report["features"])
     forbidden = ", ".join(f"`{f}`" for f in report["forbidden_columns"])
+    references = ", ".join(f"`{f}` = `{c}`" for f, c in REFERENCE_CATEGORIES.items())
     return f"""# Model card: probability of default (PD)
 
 - **Trained at:** {report["trained_at"]} (scikit-learn {report["scikit_learn"]})
@@ -215,6 +217,9 @@ Test by product (logistic):
 ## Features (allowlist, known at the grant date)
 
 {features}
+
+Categories are coded against a reference category ({references}); their odds ratios read
+"vs. the reference category".
 
 Never used (outcome, identifier or lineage columns): {forbidden}.
 Excluded on purpose: the contract rate, the installment and installment-based amounts (they embed the

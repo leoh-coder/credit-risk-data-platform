@@ -64,3 +64,10 @@ def test_a_warehouse_outage_is_reported_not_raised(app, monkeypatch):
     app.run()
     assert not app.exception
     assert any("Could not read" in e.value for e in app.error)
+
+
+def test_odds_ratios_are_read_against_the_reference_category(app):
+    app.run()
+    headings = " ".join(s.value for s in app.subheader)
+    assert "vs. the reference category" in headings
+    assert "vs. the rest" not in headings

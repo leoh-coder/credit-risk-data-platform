@@ -119,6 +119,10 @@ Each entry: the decision, why, and the alternative that was rejected.
 - **Why:** the scorecard standard: odds ratios and an exact per-applicant decomposition of the log-odds. Out of time it matches the regularized HistGradientBoosting (AUC 0.821 vs 0.822) with better calibration and almost no train/test gap.
 - **Rejected:** shipping the boosting model (no gain, less auditable) and time-series models (the task is a cross-sectional PD at the grant date).
 
+### D29. Explicit reference categories in the one-hot encoding
+- **Why:** with every level one-hot encoded next to an intercept, category coefficients are not identifiable on their own (L2 only centres them), so an odds ratio per category meant nothing precise. Each categorical feature now drops a declared reference level, `product_type = personal_loan` (largest and riskiest product) and `employment_type = clt` (most common), and its odds ratios read "vs. the reference category". A reference applicant's categorical contribution is exactly zero.
+- **Rejected:** keeping full one-hot and describing the odds ratios as "a category vs. the rest", which they are not.
+
 ### D25. Metrics: AUC, Gini, KS and calibration
 - **Why:** the credit-risk standard for discrimination, plus Brier score and a calibration table by predicted-PD decile, overall and by product.
 - **Rejected:** accuracy, meaningless at a ~12% default rate.

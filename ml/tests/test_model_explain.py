@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 
 from ml.explain import contributions, odds_ratios, permutation_importances
-from ml.features import FEATURES, TARGET, feature_matrix
+from ml.features import FEATURES, REFERENCE_CATEGORIES, TARGET, feature_matrix
 from ml.metrics import evaluate
 from ml.model import gradient_boosting_pipeline, logistic_pipeline
 from ml.split import max_mature_contract_date, out_of_time_split
@@ -33,8 +33,12 @@ def test_comparison_model_trains_on_the_same_frame(fitted):
 def test_unseen_category_and_missing_values_do_not_break_scoring(fitted):
     model, _, test = fitted
     odd = feature_matrix(test).head(1).assign(employment_type="never_seen", monthly_income=np.nan)
-    pd_hat = model.predict_proba(odd)[:, 1]
+    with pytest.warns(UserWarning, match="unknown categories"):
+        pd_hat = model.predict_proba(odd)[:, 1]
     assert 0 < pd_hat[0] < 1
+    # an unseen level is encoded like the reference category (all zeros)
+    as_reference = odd.assign(employment_type=REFERENCE_CATEGORIES["employment_type"])
+    assert pd_hat[0] == pytest.approx(model.predict_proba(as_reference)[:, 1][0])
 
 
 def test_model_never_receives_outcome_columns(fitted):
@@ -70,3 +74,19 @@ def test_contributions_refuse_more_than_one_row(fitted):
     model, _, test = fitted
     with pytest.raises(ValueError):
         contributions(model, pd.concat([feature_matrix(test).head(2)]))
+
+
+def test_reference_categories_have_no_coefficient(fitted):
+    model, _, _ = fitted
+    inputs = set(odds_ratios(model)["input"])
+    for feature, reference in REFERENCE_CATEGORIES.items():
+        assert f"cat__{feature}_{reference}" not in inputs
+        assert any(i.startswith(f"cat__{feature}_") for i in inputs)  # the other levels are still there
+
+
+def test_a_reference_category_contributes_nothing(fitted):
+    model, _, test = fitted
+    row = feature_matrix(test).head(1).assign(**REFERENCE_CATEGORIES)
+    parts = contributions(model, row)
+    for feature in REFERENCE_CATEGORIES:
+        assert parts[feature] == pytest.approx(0.0)

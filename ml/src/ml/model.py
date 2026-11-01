@@ -10,7 +10,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer, OneHotEncoder, OrdinalEncoder, StandardScaler
 
-from ml.features import CATEGORICAL_FEATURES, MONEY_FEATURES, NUMERIC_FEATURES
+from ml.features import CATEGORICAL_FEATURES, MONEY_FEATURES, NUMERIC_FEATURES, REFERENCE_CATEGORIES
 
 RANDOM_STATE = 42
 _OTHER_NUMERIC = tuple(c for c in NUMERIC_FEATURES if c not in MONEY_FEATURES)
@@ -25,7 +25,13 @@ def logistic_pipeline(C: float = 1.0) -> Pipeline:
         ]
     )
     numeric = Pipeline([("impute", SimpleImputer(strategy="median")), ("scale", StandardScaler())])
-    categorical = OneHotEncoder(handle_unknown="infrequent_if_exist", min_frequency=50, sparse_output=False)
+    # Dropping an explicit reference level keeps the coefficients identifiable next to the intercept.
+    categorical = OneHotEncoder(
+        drop=[REFERENCE_CATEGORIES[c] for c in CATEGORICAL_FEATURES],
+        handle_unknown="infrequent_if_exist",
+        min_frequency=50,
+        sparse_output=False,
+    )
     prep = ColumnTransformer(
         [
             ("money", money, list(MONEY_FEATURES)),

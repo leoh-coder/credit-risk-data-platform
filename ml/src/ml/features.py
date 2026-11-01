@@ -33,6 +33,8 @@ _CUSTOMER_NUMERIC = (
 
 NUMERIC_FEATURES: tuple[str, ...] = _CONTRACT_NUMERIC + _CUSTOMER_NUMERIC
 CATEGORICAL_FEATURES: tuple[str, ...] = ("product_type", "employment_type")
+# One-hot baseline of each categorical feature: its odds ratios read "vs. the reference category".
+REFERENCE_CATEGORIES: dict[str, str] = {"product_type": "personal_loan", "employment_type": "clt"}
 FEATURES: tuple[str, ...] = NUMERIC_FEATURES + CATEGORICAL_FEATURES
 
 # Right-skewed BRL amounts: log1p before scaling.

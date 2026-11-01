@@ -13,6 +13,7 @@ from ml.features import (
     MONEY_FEATURES,
     NUMERIC_FEATURES,
     PRICE_DEPENDENT_COLUMNS,
+    REFERENCE_CATEGORIES,
     REFERENCE_RATE_MONTHLY,
     TARGET,
     LeakageError,
@@ -115,3 +116,7 @@ def test_reference_ratio_matches_the_dbt_formula(principal, installments, income
 
 def test_reference_ratio_is_undefined_without_income():
     assert np.isnan(reference_installment_to_income_ratio(10_000, 12, 0))
+
+
+def test_every_categorical_feature_declares_a_reference_category():
+    assert set(REFERENCE_CATEGORIES) == set(CATEGORICAL_FEATURES)

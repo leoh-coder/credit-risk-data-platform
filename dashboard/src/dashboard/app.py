@@ -19,7 +19,7 @@ import streamlit as st
 from dashboard import queries
 from dashboard.config import get_settings
 from dashboard.scoring import RISK_BANDS, applicant_frame, load_artifacts, risk_band, score
-from ml.features import CATEGORICAL_FEATURES
+from ml.features import CATEGORICAL_FEATURES, REFERENCE_CATEGORIES
 
 DQ_QUARANTINE_WARN_PCT, DQ_QUARANTINE_ERROR_PCT = 5, 10  # same budget as the dbt vars
 FRESHNESS_WARN_HOURS, FRESHNESS_ERROR_HOURS = 48, 168  # same as dbt source freshness
@@ -220,7 +220,9 @@ def risk_tab() -> None:
         width="stretch",
     )
 
-    st.subheader("Odds ratios (per +1 SD; a category vs. the rest)")
+    references = ", ".join(f"{f} = {c}" for f, c in REFERENCE_CATEGORIES.items())
+    st.subheader("Odds ratios (per +1 SD; a category vs. the reference category)")
+    st.caption(f"Reference categories: {references}.")
     odds = artifacts.coefficients.reindex(artifacts.coefficients["coefficient"].abs().sort_values().index)
     st.plotly_chart(px.bar(odds, x="odds_ratio", y="input", orientation="h", log_x=True), width="stretch")
 
