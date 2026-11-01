@@ -240,15 +240,19 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s | %(message)s")
     settings = get_settings()
     population = load_population(settings.database_url)
-    logger.info(
-        "population: %d labeled contracts, %d defaults", len(population), int(population[TARGET].sum())
-    )
+    logger.info("loaded %d labeled contracts (all cohorts)", len(population))
     report = train(
         population,
         Path(settings.artifacts_dir),
         validation_months=settings.validation_months,
         test_months=settings.test_months,
     )
+    split = report["split"]
+    for period in ("train", "validation", "test"):
+        p = split[period]
+        logger.info(
+            "%-10s %s..%s %d contracts, %d defaults", period, p["from"], p["to"], p["rows"], p["defaults"]
+        )
     test = report["models"]["logistic_regression"]["test"]
     logger.info("out-of-time test: AUC %.3f | Gini %.3f | KS %.3f", test["auc"], test["gini"], test["ks"])
     return 0
