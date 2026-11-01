@@ -9,7 +9,7 @@ Each entry: the decision, why, and the alternative that was rejected.
 - **Rejected:** MinIO. Its community Docker images were discontinued and the repository archived.
 
 ### D02. Synthetic source with a hidden latent risk factor
-- **Why:** one unexported factor drives both the observable signals (income, bureau score, employment, betting and cash-withdrawal behavior) and default, so the model has to learn from observable data, as with a real portfolio. Default rate in mature cohorts is about 12%, with payroll < vehicle < personal loans.
+- **Why:** one unexported factor drives both the observable signals (income, bureau score, employment, betting and cash-withdrawal behavior) and default, so the model has to learn from observable data, as with a real portfolio. Default rate in mature cohorts is about 11%, with payroll < vehicle < personal loans.
 - **Rejected:** independent random columns (nothing to learn) or exporting the risk driver (trivial, leaky model).
 
 ### D03. Daily batches, deterministic per (seed, reference date, as-of)
@@ -116,7 +116,7 @@ Each entry: the decision, why, and the alternative that was rejected.
 - **Rejected:** keeping every available column and letting the model sort it out.
 
 ### D24. Logistic regression as the main model, one comparison model
-- **Why:** the scorecard standard: odds ratios and an exact per-applicant decomposition of the log-odds. Out of time it matches the regularized HistGradientBoosting (AUC 0.821 vs 0.822) with better calibration and almost no train/test gap.
+- **Why:** the scorecard standard: odds ratios and an exact per-applicant decomposition of the log-odds. Both models are tuned on the validation period (logistic C in {0.1, 1, 10}; boosting depth/leaf in {2/200, 3/100, 4/50}). Out of time the logistic model (test AUC 0.828, KS 0.519) slightly beats the boosting model (0.825, KS 0.509), with better calibration (largest decile gap 0.036 vs 0.044) and a smaller train/test gap.
 - **Rejected:** shipping the boosting model (no gain, less auditable) and time-series models (the task is a cross-sectional PD at the grant date).
 
 ### D29. Explicit reference categories in the one-hot encoding

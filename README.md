@@ -108,11 +108,12 @@ contracts only.
 - PII is masked in staging: CPF becomes a salted SHA-256, e-mail its domain, phone its area
   code, and the name is dropped.
 - The PD label is measured against the extraction clock, never `current_date`.
-  `label_status` is `labeled`, `immature` or `incomplete_schedule`. A gap in the window can
-  confirm an observed default but never a good outcome.
+  `label_status` is `labeled`, `immature` or `incomplete_schedule`. A window with a quarantined
+  installment is never labeled, even when a default was observed in it (`has_defaulted_to_date`
+  keeps that for monitoring), so gaps cannot over-represent defaults.
 - Orphans from row-level quarantine point to a `'-1'` unknown member, so facts reconcile with
   `raw`.
-- Data quality (`dbt build`: 128 nodes, 0 warnings on the full history):
+- Data quality (`dbt build`: 130 nodes, 0 warnings on the full history):
   - enforced model contracts on every mart;
   - domains, ranges, row invariants and composite keys;
   - singular tests reconciling lake → `raw` → facts, checking schedules against contracts, and
@@ -125,32 +126,45 @@ contracts only.
     | Unknown customer | 2% | 5% |
     | Incomplete label window | 15% | 30% |
     | Quarantine per entity, rolling 7 loaded dates | 5% | 10% |
-  - failing rows stored in `audit`, source freshness on `_loaded_at`, and 3 dbt unit tests
-    (DPD and censoring branches, maturity boundaries, rolling quarantine window).
+  - failing rows stored in `audit`, source freshness on `_loaded_at`, and 4 dbt unit tests
+    (DPD and censoring branches, maturity boundaries, rolling quarantine window, reference-rate
+    affordability).
 
 ### PD model (`ml/`)
 
-- Population: marts only, labeled contracts of known customers, contracts up to 2025-07-17
-  (the last date with every product mature). That leaves 12,774 contracts and 1,572 defaults.
-- Out-of-time split: train on 2024-07-01 to 2025-03-31 (9,155 contracts), test on 2025-04-01 to
-  2025-07-17 (3,619 contracts).
-- A feature allowlist of 16 columns known at the grant date. Outcome, key and lineage columns
+- Population: marts only, labeled contracts of known customers, contracts up to the last date
+  with every product mature. That date comes from the observation clock of the data
+  (observation - 90 days - 12 months = 2025-07-17), which leaves 12,614 contracts and 1,412
+  defaults (11.2%).
+- Out-of-time train / validation / test (validation and test sizes are parameters, 3 months each):
+
+  | Period | Contracts | Defaults |
+  |---|---|---|
+  | Train: 2024-07-01 to 2025-01-17 | 6,664 | 720 |
+  | Validation: 2025-01-18 to 2025-04-17 | 2,893 | 337 |
+  | Test: 2025-04-18 to 2025-07-17 | 3,057 | 355 |
+
+  Hyperparameters and permutation importance use the validation period only. The chosen models
+  are refit on train + validation and scored once on the test period.
+- A feature allowlist of 15 columns known at the grant date. Outcome, key and lineage columns
   are forbidden, and tests enforce it. The population query is generated from the allowlist.
-  Excluded on purpose: the interest rate (pricing feedback loop), and the e-mail domain, phone
-  area code and state (proxies).
-- Main model: logistic regression in a scikit-learn `Pipeline`. Comparison model: regularized
-  HistGradientBoosting.
+  Nothing that embeds the bank's own price is a feature: the contract rate, the installment and
+  installment-based ratios are excluded, and affordability enters as the installment at a fixed
+  3% monthly reference rate over income. The e-mail domain, phone area code and state are
+  excluded as proxies.
+- Main model: logistic regression in a scikit-learn `Pipeline`, with explicit reference
+  categories (`personal_loan`, `clt`). Comparison model: regularized HistGradientBoosting.
 
-  | Model | Train AUC | Test AUC | Test Gini | Test KS | Test Brier | Test mean PD vs. observed |
-  |---|---|---|---|---|---|---|
-  | Logistic regression | 0.826 | 0.821 | 0.643 | 0.498 | 0.0882 | 0.123 vs. 0.128 |
-  | HistGradientBoosting | 0.852 | 0.822 | 0.643 | 0.496 | 0.0891 | 0.122 vs. 0.128 |
+  | Model | Train AUC | Validation AUC | Test AUC | Test Gini | Test KS | Test Brier | Test mean PD vs. observed |
+  |---|---|---|---|---|---|---|---|
+  | Logistic regression (C = 1.0) | 0.824 | 0.830 | 0.828 | 0.656 | 0.519 | 0.0813 | 0.110 vs. 0.116 |
+  | HistGradientBoosting (depth 2, leaf 200) | 0.837 | 0.832 | 0.825 | 0.650 | 0.509 | 0.0823 | 0.110 vs. 0.116 |
 
-  The largest gap between predicted and observed default rate across PD deciles is 0.032 for
-  the logistic model and 0.041 for the boosting model. Vehicle financing is under-predicted on
-  the test period (0.077 vs. 0.101).
-- Explainability: odds ratios, permutation importance (out of time), and exact per-feature
-  log-odds contributions per applicant.
+  The largest gap between predicted and observed default rate across test PD deciles is 0.036
+  for the logistic model and 0.044 for the boosting model. Vehicle financing is under-predicted
+  on the test period (0.071 vs. 0.096).
+- Explainability: odds ratios (per +1 SD, or vs. the reference category), permutation importance
+  on the validation period, and exact per-feature log-odds contributions per applicant.
 - `python -m ml.train` writes the model, `metrics.json`, calibration, coefficients, permutation
   importance, simulation defaults and a model card.
 
@@ -158,10 +172,10 @@ contracts only.
 
 Streamlit with three tabs:
 - **Engineering:** freshness, rolling quarantine rate against the budget, loads per date.
-- **Portfolio:** volume by month and product, default rate by cohort, label status, overdue
-  amount by DPD bucket.
+- **Portfolio:** volume by month and product, default rate over fully mature cohorts and by
+  cohort, label status, overdue amount by DPD bucket.
 - **Risk simulation:** PD, a display-only band, per-feature contributions, and model metrics,
-  calibration, importance and odds ratios.
+  calibration, importance and odds ratios. The input fields are derived from the feature list.
 
 ### Access control
 
@@ -249,9 +263,9 @@ make test lint
 |---|---|---|
 | `ingestion` | 26 | Includes the S3 code path against a moto emulator |
 | `loader` | 15 | Real Postgres, with a throwaway database per test (skipped locally if unreachable; fails in CI) |
-| `ml` | 50 | Allowlist and leakage, split limits, metrics on hand-computed cases, exact contributions, artifacts |
-| `dashboard` | 24 | Marts-only queries, scoring, and the whole app run headless with `AppTest` |
-| dbt | 128 nodes | Run by `make transform` |
+| `ml` | 72 | Allowlist and leakage, split limits, metrics on hand-computed cases, exact contributions, artifacts |
+| `dashboard` | 29 | Marts-only queries, scoring, and the whole app run headless with `AppTest` |
+| dbt | 130 nodes | Run by `make transform` |
 
 CI (GitHub Actions) runs ruff and pytest per package. A compose smoke run then covers a 3-day
 backfill, load, incremental no-op, `dbt build`, freshness, the docs artifact, grants and login
