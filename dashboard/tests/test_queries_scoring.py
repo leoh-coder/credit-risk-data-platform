@@ -5,8 +5,16 @@ import pandas as pd
 import pytest
 
 from dashboard.queries import QUERIES
-from dashboard.scoring import RISK_BANDS, applicant_frame, load_artifacts, risk_band, score
-from ml.features import FEATURES
+from dashboard.scoring import (
+    FIELD_META,
+    RISK_BANDS,
+    applicant_frame,
+    load_artifacts,
+    risk_band,
+    score,
+    simulation_fields,
+)
+from ml.features import DERIVED_FEATURES, FEATURES, NUMERIC_FEATURES
 
 
 @pytest.mark.parametrize("name", sorted(QUERIES))
@@ -22,11 +30,16 @@ def test_no_query_touches_outcome_columns_as_inputs_to_scoring():
     assert list(row.columns) == list(FEATURES)
 
 
-def test_installment_to_income_ratio_is_derived_not_typed():
-    values = dict.fromkeys(FEATURES, 1.0) | {"installment_amount": 500.0, "monthly_income": 2000.0}
-    values["installment_to_income_ratio"] = 99.0  # anything typed is overwritten
-    assert applicant_frame(values).at[0, "installment_to_income_ratio"] == pytest.approx(0.25)
-    assert np.isnan(applicant_frame(values | {"monthly_income": 0.0}).at[0, "installment_to_income_ratio"])
+def test_reference_ratio_is_derived_not_typed():
+    values = dict.fromkeys(FEATURES, 1.0) | {
+        "principal_amount": 10_000.0,
+        "installments_count": 12,
+        "monthly_income": 5_000.0,
+    }
+    values["reference_installment_to_income_ratio"] = 99.0  # anything typed is overwritten
+    assert applicant_frame(values).at[0, "reference_installment_to_income_ratio"] == pytest.approx(0.2009, abs=1e-4)
+    no_income = applicant_frame(values | {"monthly_income": 0.0})
+    assert np.isnan(no_income.at[0, "reference_installment_to_income_ratio"])
 
 
 @pytest.mark.parametrize(
@@ -39,6 +52,11 @@ def test_risk_band_boundaries(pd_hat, band):
 
 def test_missing_artifacts_mean_no_model_not_an_error(tmp_path):
     assert load_artifacts(tmp_path) is None
+
+
+def test_artifacts_trained_on_another_feature_list_are_out_of_date(artifacts_dir, outdated_artifacts_dir):
+    assert load_artifacts(artifacts_dir).is_current
+    assert not load_artifacts(outdated_artifacts_dir).is_current
 
 
 def test_score_returns_a_pd_and_contributions_that_add_up(artifacts_dir):
@@ -85,3 +103,25 @@ def test_fetch_turns_decimals_into_floats(monkeypatch):
     frame = queries.fetch("label_status", "postgresql://unused")
     assert frame["x"].dtype == float
     assert frame["y"].tolist() == ["a"]
+
+
+def test_every_non_derived_numeric_feature_has_a_simulation_field():
+    typed = {field.feature for field in simulation_fields()}
+    assert typed == set(NUMERIC_FEATURES) - set(DERIVED_FEATURES)
+
+
+def test_derived_features_are_computed_from_typed_fields():
+    typed = {field.feature for field in simulation_fields()}
+    for inputs in DERIVED_FEATURES.values():
+        assert set(inputs) <= typed
+
+
+def test_field_metadata_has_no_stale_entries():
+    assert set(FIELD_META) <= set(NUMERIC_FEATURES) - set(DERIVED_FEATURES)
+
+
+def test_a_new_feature_without_metadata_still_gets_a_field():
+    fields = simulation_fields(numeric_features=(*NUMERIC_FEATURES, "brand_new_ratio"))
+    new = next(field for field in fields if field.feature == "brand_new_ratio")
+    assert new.label == "Brand new ratio"
+    assert new.min_value <= new.max_value

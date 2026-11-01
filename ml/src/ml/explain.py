@@ -20,7 +20,8 @@ def _original_feature(transformed_name: str) -> str:
 
 
 def odds_ratios(pipeline: Pipeline) -> pd.DataFrame:
-    """Coefficient and odds ratio per model input (per +1 SD; log-SD for money; a category vs. the rest)."""
+    """Coefficient and odds ratio per model input: per +1 SD (log-SD for money) for numbers, and vs. the
+    reference category (REFERENCE_CATEGORIES, no row of its own) for categories."""
     names = pipeline.named_steps["prep"].get_feature_names_out()
     coefficients = pipeline.named_steps["model"].coef_[0]
     table = pd.DataFrame(

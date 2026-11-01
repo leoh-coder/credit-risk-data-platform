@@ -9,7 +9,7 @@ Each entry: the decision, why, and the alternative that was rejected.
 - **Rejected:** MinIO. Its community Docker images were discontinued and the repository archived.
 
 ### D02. Synthetic source with a hidden latent risk factor
-- **Why:** one unexported factor drives both the observable signals (income, bureau score, employment, betting and cash-withdrawal behavior) and default, so the model has to learn from observable data, as with a real portfolio. Default rate in mature cohorts is about 12%, with payroll < vehicle < personal loans.
+- **Why:** one unexported factor drives both the observable signals (income, bureau score, employment, betting and cash-withdrawal behavior) and default, so the model has to learn from observable data, as with a real portfolio. Default rate in mature cohorts is about 11%, with payroll < vehicle < personal loans.
 - **Rejected:** independent random columns (nothing to learn) or exporting the risk driver (trivial, leaky model).
 
 ### D03. Daily batches, deterministic per (seed, reference date, as-of)
@@ -76,8 +76,8 @@ Each entry: the decision, why, and the alternative that was rejected.
 - **Rejected:** one wide fact mixing grains, which double-counts amounts.
 
 ### D17. No imputation of the label
-- **Why:** `pd_label` is NULL with a `label_status` (`immature`, `incomplete_schedule`). A gap in the window can confirm an already observed default but never a good outcome. Delinquency and maturity use the extraction clock, never `current_date`. Window and threshold are dbt vars.
-- **Rejected:** treating immature or partially observed contracts as good payers (right-censoring bias).
+- **Why:** `pd_label` is NULL with a `label_status` (`immature`, `incomplete_schedule`). The rule is symmetric: a window with a quarantined installment is never labeled, even if a default was observed in it (`has_defaulted_to_date` still records it for monitoring). An earlier version labeled those defaults as 1 while dropping the goods with gaps, which kept 160 extra defaults and raised the training default rate from 11.2% to 12.3%. Delinquency and maturity use the extraction clock, never `current_date`. Window and threshold are dbt vars.
+- **Rejected:** treating immature or partially observed contracts as good payers (right-censoring bias), and labeling only the defaults of incomplete windows (selection bias).
 
 ### D18. Portable SQL where a macro exists
 - **Why:** `dbt_utils.date_spine` instead of `generate_series` (not supported on Redshift data tables), `dbt.dateadd` instead of `make_interval`, `SUM(CASE ...)` instead of `FILTER (WHERE ...)`, `ROW_NUMBER()` instead of `DISTINCT ON`. What remains Postgres-specific is listed in the README.
@@ -96,21 +96,32 @@ Each entry: the decision, why, and the alternative that was rejected.
 
 ## Model
 
-### D21. Out-of-time validation on mature cohorts only
-- **Why:** train on contracts before 2025-04-01, test on 2025-04-01 to 2025-07-17, the last date when every product is mature. Contracts after the limit raise an error instead of being dropped silently.
-- **Rejected:** a random split, which leaks the future into training and hides drift.
+### D21. Out-of-time train / validation / test on mature cohorts only
+- **Why:**
+  - **Maturity limit from the data.** The last contract date mature for every product is computed from the observation clock (`min(observed_at)` of the facts): observation - 90 days - 12 months, the same parameters as the dbt label (tested against the dbt vars). For the current data that is 2025-07-17. Later contracts raise instead of being dropped silently.
+  - **Three periods.** Test = the last `test_months` (3) before the limit, validation = the `validation_months` (3) before the test, train = everything earlier. Both sizes are parameters.
+  - **One look at the test.** Hyperparameters, feature-exclusion evidence and permutation importance use the validation period only. The chosen models are refit on train + validation and scored once on the test period. An earlier version tuned the comparison model and judged features on the test period, which made its metrics optimistic.
+- **Rejected:** a random split (leaks the future into training and hides drift) and a single train/test split used for tuning.
 
 ### D22. Explicit feature allowlist, enforced by tests
-- **Why:** 16 features known at the grant date. Outcome columns (`max_dpd_in_window`, `is_mature`, `window_*`, `label_status`, `pd_label`), keys and lineage are forbidden, and a test fails if any of them reaches the feature set. The population query is generated from the allowlist, so outcome columns are never fetched.
+- **Why:** 15 features known at the grant date. Outcome columns (`max_dpd_in_window`, `is_mature`, `window_*`, `label_status`, `pd_label`), keys and lineage are forbidden, and a test fails if any of them reaches the feature set. The population query is generated from the allowlist, so outcome columns are never fetched.
 - **Rejected:** a denylist, which lets every new column in by default.
 
 ### D23. Columns excluded on purpose, although known at the grant date
-- **Why:** `interest_rate_monthly` is the output of the bank's own risk-based pricing (feedback loop); `email_domain`, `phone_area_code` and `state_code` are socio-economic or geographic proxies. `state_code` was removed after the first training: the source assigns it independently of risk, yet it received odds ratios up to 1.6.
+- **Why:**
+  - **No feature may carry the bank's own price.** `interest_rate_monthly` comes from risk-based pricing on the bureau score: a model trained on it learns the bank's previous decisions (feedback loop) and drifts whenever pricing changes. An earlier version excluded the rate but kept `installment_amount` and `installment_to_income_ratio`. Since installment = principal x annuity(rate, term), the rate was recoverable from principal, term and installment, so that exclusion did not work. The installment, its ratio and `total_scheduled_amount` are now excluded too (`PRICE_DEPENDENT_COLUMNS`).
+  - **Affordability without the price.** `reference_installment_to_income_ratio` is the installment at a fixed qualifying rate (dbt var `reference_rate_monthly` = 3% a month, at or above every payroll and vehicle contract rate) over income, in the spirit of a stress-test qualifying rate. It depends on principal, term and income only.
+  - **Known residual.** For 543 of 6,681 payroll loans (8%) the source capped the principal with the 35% income-commitment rule, which uses the contract rate, so the principal itself carries some rate information for those loans. Removing it would need the requested (pre-cap) amount, which the source does not provide.
+  - **Proxies.** `email_domain`, `phone_area_code` and `state_code` are socio-economic or geographic proxies; the source assigns the state independently of risk. The exclusion rests on that argument: the earlier evidence for dropping `state_code` came from the test period and is no longer used.
 - **Rejected:** keeping every available column and letting the model sort it out.
 
 ### D24. Logistic regression as the main model, one comparison model
-- **Why:** the scorecard standard: odds ratios and an exact per-applicant decomposition of the log-odds. Out of time it matches the regularized HistGradientBoosting (AUC 0.821 vs 0.822) with better calibration and almost no train/test gap.
+- **Why:** the scorecard standard: odds ratios and an exact per-applicant decomposition of the log-odds. Both models are tuned on the validation period (logistic C in {0.1, 1, 10}; boosting depth/leaf in {2/200, 3/100, 4/50}). Out of time the logistic model (test AUC 0.828, KS 0.519) slightly beats the boosting model (0.825, KS 0.509), with better calibration (largest decile gap 0.036 vs 0.044) and a smaller train/test gap.
 - **Rejected:** shipping the boosting model (no gain, less auditable) and time-series models (the task is a cross-sectional PD at the grant date).
+
+### D29. Explicit reference categories in the one-hot encoding
+- **Why:** with every level one-hot encoded next to an intercept, category coefficients are not identifiable on their own (L2 only centres them), so an odds ratio per category meant nothing precise. Each categorical feature now drops a declared reference level, `product_type = personal_loan` (largest and riskiest product) and `employment_type = clt` (most common), and its odds ratios read "vs. the reference category". A reference applicant's categorical contribution is exactly zero.
+- **Rejected:** keeping full one-hot and describing the odds ratios as "a category vs. the rest", which they are not.
 
 ### D25. Metrics: AUC, Gini, KS and calibration
 - **Why:** the credit-risk standard for discrimination, plus Brier score and a calibration table by predicted-PD decile, overall and by product.

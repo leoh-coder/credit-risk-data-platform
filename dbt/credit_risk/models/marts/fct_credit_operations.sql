@@ -37,6 +37,9 @@ select
     (o.installments_count * o.installment_amount)::numeric(18, 2)           as total_scheduled_amount,
     o.bureau_score_at_origination,
     (o.installment_amount / nullif(c.monthly_income, 0))::numeric(10, 4)   as installment_to_income_ratio,
+    {%- set r = var('reference_rate_monthly') %}
+    (o.principal_amount * {{ r }} / (1 - power(1 + {{ r }}, -o.installments_count))
+        / nullif(c.monthly_income, 0))::numeric(10, 4)                     as reference_installment_to_income_ratio,
 
     perf.window_installments,
     perf.window_installments_present::int                                   as window_installments_present,

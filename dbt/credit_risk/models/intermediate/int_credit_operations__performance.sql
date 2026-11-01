@@ -1,7 +1,7 @@
 {#-
     PD label per operation: DPD >= pd_default_dpd within the first pd_window_installments installments.
-    Only mature contracts are labeled, bads included (labeling early bads alone would over-sample defaults
-    in recent cohorts). A gap in the window can confirm an observed default but never a good.
+    Only mature, complete windows are labeled, bads included: labeling observed bads in incomplete windows
+    while dropping goods would over-sample defaults. has_defaulted_to_date keeps the observed default.
 -#}
 
 {%- set window_size = var('pd_window_installments') -%}
@@ -69,14 +69,14 @@ select
     *,
     case
         when not is_mature then null
-        when has_defaulted_to_date then 1
         when not is_window_complete then null
+        when has_defaulted_to_date then 1
         else 0
     end as pd_label,
     case
         when not is_mature then 'immature'
-        when has_defaulted_to_date or is_window_complete then 'labeled'
-        else 'incomplete_schedule'
+        when not is_window_complete then 'incomplete_schedule'
+        else 'labeled'
     end as label_status
 
 from flags

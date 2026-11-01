@@ -16,6 +16,10 @@ vars:
   # Default: 90+ days past due within the first 12 installments.
   pd_window_installments: 12
   pd_default_dpd: 90
+  # Qualifying rate for reference_installment_to_income_ratio: affordability at a fixed monthly rate, so the
+  # feature does not carry the bank's own risk-based price. 3% >= every payroll and vehicle contract rate
+  # and equals the personal-loan floor (portfolio median 3.45%).
+  reference_rate_monthly: 0.03
   # Open Finance history shared at onboarding; anything on/after the application date is leakage.
   open_finance_history_days: 90
 

@@ -18,29 +18,13 @@ import streamlit as st
 
 from dashboard import queries
 from dashboard.config import get_settings
-from dashboard.scoring import RISK_BANDS, load_artifacts, risk_band, score
-from ml.features import CATEGORICAL_FEATURES
+from dashboard.scoring import RISK_BANDS, applicant_frame, load_artifacts, risk_band, score, simulation_fields
+from ml.features import CATEGORICAL_FEATURES, REFERENCE_CATEGORIES
 
 DQ_QUARANTINE_WARN_PCT, DQ_QUARANTINE_ERROR_PCT = 5, 10  # same budget as the dbt vars
 FRESHNESS_WARN_HOURS, FRESHNESS_ERROR_HOURS = 48, 168  # same as dbt source freshness
 DPD_ORDER = ["1-30", "31-60", "61-89", "90+"]
 
-# label, min, max, step for each simulated input (installment_to_income_ratio is derived, not typed)
-FIELDS: dict[str, tuple[str, float, float, float]] = {
-    "principal_amount": ("Principal (BRL)", 500.0, 500_000.0, 500.0),
-    "installments_count": ("Installments", 1, 120, 1),
-    "installment_amount": ("Installment (BRL)", 10.0, 50_000.0, 10.0),
-    "bureau_score_at_origination": ("Bureau score", 0, 1000, 10),
-    "age_at_registration": ("Age", 18, 100, 1),
-    "monthly_income": ("Monthly income (BRL)", 0.0, 200_000.0, 100.0),
-    "of_tx_count": ("Open Finance transactions (90 d)", 0, 2000, 1),
-    "of_salary_deposit_count": ("Salary deposits (90 d)", 0, 20, 1),
-    "of_monthly_inflow": ("Monthly inflow (BRL)", 0.0, 500_000.0, 100.0),
-    "of_monthly_outflow": ("Monthly outflow (BRL)", 0.0, 500_000.0, 100.0),
-    "of_inflow_to_income_ratio": ("Inflow / declared income", 0.0, 20.0, 0.05),
-    "of_betting_spend_share": ("Betting share of spend", 0.0, 1.0, 0.01),
-    "of_cash_withdrawal_share": ("Cash withdrawal share of spend", 0.0, 1.0, 0.01),
-}
 
 st.set_page_config(page_title="Credit Risk Data Platform", layout="wide")
 
@@ -104,12 +88,19 @@ def portfolio_tab() -> None:
     if any(frame is None for frame in (monthly, cohorts, labels, aging)):
         return
 
-    labeled, defaults = cohorts["labeled"].sum(), cohorts["defaults"].sum()
+    # Recent cohorts only label short products, so their mix would bias the rate: keep fully mature cohorts.
+    immature_months = set(cohorts.loc[cohorts["immature"] > 0, "year_month"])
+    mature_cohorts = cohorts[~cohorts["year_month"].isin(immature_months)]
+    labeled, defaults = mature_cohorts["labeled"].sum(), mature_cohorts["defaults"].sum()
     a, b, c, d = st.columns(4)
     a.metric("Contracts", f"{int(monthly['contracts'].sum()):,}")
     b.metric("Principal (BRL)", f"{monthly['principal_amount'].sum() / 1e6:,.1f} M")
-    c.metric("Labeled contracts", f"{int(labeled):,}")
-    d.metric("Default rate (labeled)", f"{defaults / labeled:.1%}" if labeled else "n/a")
+    c.metric("Labeled contracts", f"{int(cohorts['labeled'].sum()):,}")
+    d.metric("Default rate (mature cohorts)", f"{defaults / labeled:.1%}" if labeled else "n/a")
+    st.caption(
+        f"Default rate over the {mature_cohorts['year_month'].nunique()} cohorts in which every product is mature "
+        f"({int(labeled):,} labeled contracts)."
+    )
 
     st.subheader("Contracts per month and product")
     st.plotly_chart(px.bar(monthly, x="year_month", y="contracts", color="product_type"), width="stretch")
@@ -144,14 +135,15 @@ def simulation_form(defaults: dict) -> dict:
         values[feature] = columns[i % 3].selectbox(
             feature.replace("_", " ").capitalize(), options, index=options.index(spec["default"]), key=feature
         )
-    for i, (feature, (label, low, high, step)) in enumerate(FIELDS.items(), start=len(CATEGORICAL_FEATURES)):
-        start = float(np.clip(defaults["numeric"][feature], low, high))
+    for i, field in enumerate(simulation_fields(), start=len(CATEGORICAL_FEATURES)):
+        low, high, step = field.min_value, field.max_value, field.step
+        start = float(np.clip(defaults["numeric"][field.feature], low, high))
         if isinstance(step, int):
-            values[feature] = columns[i % 3].number_input(
-                label, int(low), int(high), int(round(start)), int(step), key=feature
+            values[field.feature] = columns[i % 3].number_input(
+                field.label, int(low), int(high), round(start), step, key=field.feature
             )
         else:
-            values[feature] = columns[i % 3].number_input(label, low, high, start, step, key=feature)
+            values[field.feature] = columns[i % 3].number_input(field.label, low, high, start, step, key=field.feature)
     return values
 
 
@@ -168,6 +160,9 @@ def risk_tab() -> None:
     if artifacts is None:
         st.info("No trained model found. Train it with `make train` (writes the artifacts this tab reads).")
         return
+    if not artifacts.is_current:
+        st.warning("Model artifacts are out of date: run `make train`")
+        return
 
     st.subheader("Simulate an applicant")
     values = simulation_form(artifacts.simulation_defaults)
@@ -176,8 +171,8 @@ def risk_tab() -> None:
     a, b, c = st.columns(3)
     a.metric("Probability of default", f"{pd_hat:.1%}")
     b.metric("Risk band", risk_band(pd_hat))
-    ratio = values["installment_amount"] / values["monthly_income"] if values["monthly_income"] else float("nan")
-    c.metric("Installment / income (derived)", f"{ratio:.1%}")
+    ratio = applicant_frame(values).at[0, "reference_installment_to_income_ratio"]
+    c.metric("Installment / income at the reference rate", f"{ratio:.1%}")
     st.caption(
         "Bands: " + ", ".join(f"{band} < {upper:.0%}" for band, upper in RISK_BANDS[:-1]) + ", E otherwise "
         "(display only, not a credit policy)."
@@ -189,17 +184,21 @@ def risk_tab() -> None:
         "A term is coefficient x the standardized (log for money) value, relative to the training mean."
     )
 
-    st.subheader("Model performance (out-of-time test)")
+    st.subheader("Model performance (out of time)")
+    periods = ("train", "validation", "test")
     rows = []
     for name, model_metrics in artifacts.metrics["models"].items():
-        for period in ("train", "test"):
+        for period in periods:
             m = model_metrics[period]
             rows.append({"model": name, "period": period, **{k: m[k] for k in ("auc", "gini", "ks", "brier")}})
     st.dataframe(pd.DataFrame(rows).round(3), hide_index=True, width="stretch")
     split = artifacts.metrics["split"]
     st.caption(
-        f"Train {split['train']['from']}..{split['train']['to']} ({split['train']['rows']:,} contracts), "
-        f"test {split['test']['from']}..{split['test']['to']} ({split['test']['rows']:,}). Never a random split."
+        ", ".join(
+            f"{p} {split[p]['from']}..{split[p]['to']} ({split[p]['rows']:,} contracts)" for p in periods
+        ).capitalize()
+        + ". Hyperparameters are chosen on validation; the final model is refit on train + validation "
+        "and scored once on test. Never a random split."
     )
 
     left, right = st.columns(2)
@@ -217,7 +216,9 @@ def risk_tab() -> None:
         width="stretch",
     )
 
-    st.subheader("Odds ratios (per +1 SD; a category vs. the rest)")
+    references = ", ".join(f"{f} = {c}" for f, c in REFERENCE_CATEGORIES.items())
+    st.subheader("Odds ratios (per +1 SD; a category vs. the reference category)")
+    st.caption(f"Reference categories: {references}.")
     odds = artifacts.coefficients.reindex(artifacts.coefficients["coefficient"].abs().sort_values().index)
     st.plotly_chart(px.bar(odds, x="odds_ratio", y="input", orientation="h", log_x=True), width="stretch")
 

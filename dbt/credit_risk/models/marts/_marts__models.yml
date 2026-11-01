@@ -207,6 +207,11 @@ models:
       - name: installment_to_income_ratio
         description: Installment / declared monthly income (debt-service ratio). NULL for the unknown customer.
         data_type: numeric(10, 4)
+      - name: reference_installment_to_income_ratio
+        description: >
+          Installment at the fixed reference rate (var reference_rate_monthly) / declared monthly income. Depends
+          on principal, term and income only, not on the contract rate. NULL for the unknown customer.
+        data_type: numeric(10, 4)
       - name: window_installments
         description: Installments in the label window = min(installments_count, pd_window_installments).
         data_type: integer
@@ -477,3 +482,37 @@ unit_tests:
         - {reference_date: 2026-01-06, rows_quarantined: 1, rows_received_7d: 60, rows_quarantined_7d: 6, dates_in_window_7d: 6, quarantine_pct_7d: 10.00}
         - {reference_date: 2026-01-07, rows_quarantined: 1, rows_received_7d: 70, rows_quarantined_7d: 7, dates_in_window_7d: 7, quarantine_pct_7d: 10.00}
         - {reference_date: 2026-01-08, rows_quarantined: 3, rows_received_7d: 70, rows_quarantined_7d: 9, dates_in_window_7d: 7, quarantine_pct_7d: 12.86}
+
+  - name: reference_affordability_ignores_the_contract_rate
+    description: >
+      Reference rate 0.03 per month. The first two operations share principal, term and income but not the
+      contract rate or installment, so their ratio must be identical.
+    model: fct_credit_operations
+    overrides:
+      vars: {reference_rate_monthly: 0.03}
+    given:
+      - input: ref('stg_core_banking__credit_operations')
+        rows:
+          - {operation_id: cheap_rate,      customer_id: C1, product_type: payroll_loan,  principal_amount: 10000, installments_count: 12, interest_rate_monthly: 0.015, installment_amount: 916.80}
+          - {operation_id: expensive_rate,  customer_id: C1, product_type: personal_loan, principal_amount: 10000, installments_count: 12, interest_rate_monthly: 0.085, installment_amount: 1361.00}
+          - {operation_id: longer_term,     customer_id: C1, product_type: personal_loan, principal_amount: 10000, installments_count: 24, interest_rate_monthly: 0.050, installment_amount: 724.71}
+          - {operation_id: unknown_customer, customer_id: C9, product_type: personal_loan, principal_amount: 10000, installments_count: 12, interest_rate_monthly: 0.050, installment_amount: 1128.25}
+      - input: ref('int_credit_operations__performance')
+        rows:
+          - {operation_id: cheap_rate}
+          - {operation_id: expensive_rate}
+          - {operation_id: longer_term}
+          - {operation_id: unknown_customer}
+      - input: ref('dim_customers')
+        rows:
+          - {customer_key: k1, customer_id: C1, monthly_income: 5000, is_unknown_member: false}
+      - input: ref('dim_products')
+        rows:
+          - {product_key: p1, product_type: payroll_loan,  is_unknown_member: false}
+          - {product_key: p2, product_type: personal_loan, is_unknown_member: false}
+    expect:
+      rows:
+        - {operation_id: cheap_rate,       reference_installment_to_income_ratio: 0.2009}
+        - {operation_id: expensive_rate,   reference_installment_to_income_ratio: 0.2009}
+        - {operation_id: longer_term,      reference_installment_to_income_ratio: 0.1181}
+        - {operation_id: unknown_customer, reference_installment_to_income_ratio: null}

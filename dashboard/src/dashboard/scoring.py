@@ -7,15 +7,60 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import joblib
-import numpy as np
 import pandas as pd
 from sklearn.pipeline import Pipeline
 
 from ml.explain import contributions
-from ml.features import FEATURES, feature_matrix
+from ml.features import (
+    DERIVED_FEATURES,
+    FEATURES,
+    NUMERIC_FEATURES,
+    feature_matrix,
+    reference_installment_to_income_ratio,
+)
 
 # Display-only grades for the simulated PD (not a credit policy).
 RISK_BANDS: tuple[tuple[str, float], ...] = (("A", 0.02), ("B", 0.05), ("C", 0.10), ("D", 0.20), ("E", 1.01))
+
+
+# Optional display metadata (label, min, max, step); integer steps give integer inputs. A numeric feature
+# without an entry still gets a generic field, so adding a feature never breaks the simulation.
+FIELD_META: dict[str, tuple[str, float, float, float]] = {
+    "principal_amount": ("Principal (BRL)", 500.0, 500_000.0, 500.0),
+    "installments_count": ("Installments", 1, 120, 1),
+    "bureau_score_at_origination": ("Bureau score", 0, 1000, 10),
+    "age_at_registration": ("Age", 18, 100, 1),
+    "monthly_income": ("Monthly income (BRL)", 0.0, 200_000.0, 100.0),
+    "of_tx_count": ("Open Finance transactions (90 d)", 0, 2000, 1),
+    "of_salary_deposit_count": ("Salary deposits (90 d)", 0, 20, 1),
+    "of_monthly_inflow": ("Monthly inflow (BRL)", 0.0, 500_000.0, 100.0),
+    "of_monthly_outflow": ("Monthly outflow (BRL)", 0.0, 500_000.0, 100.0),
+    "of_inflow_to_income_ratio": ("Inflow / declared income", 0.0, 20.0, 0.05),
+    "of_betting_spend_share": ("Betting share of spend", 0.0, 1.0, 0.01),
+    "of_cash_withdrawal_share": ("Cash withdrawal share of spend", 0.0, 1.0, 0.01),
+}
+
+
+@dataclass(frozen=True)
+class SimulationField:
+    feature: str
+    label: str
+    min_value: float
+    max_value: float
+    step: float
+
+
+def simulation_fields(
+    numeric_features: tuple[str, ...] = NUMERIC_FEATURES, derived: dict = DERIVED_FEATURES
+) -> list[SimulationField]:
+    """One typed input per numeric model feature that is not derived from other inputs."""
+    fields = []
+    for feature in numeric_features:
+        if feature in derived:
+            continue
+        label, low, high, step = FIELD_META.get(feature, (feature.replace("_", " ").capitalize(), 0.0, 1e9, 1.0))
+        fields.append(SimulationField(feature, label, low, high, step))
+    return fields
 
 
 @dataclass(frozen=True)
@@ -26,6 +71,11 @@ class ModelArtifacts:
     coefficients: pd.DataFrame
     permutation_importance: pd.DataFrame
     calibration: pd.DataFrame
+
+    @property
+    def is_current(self) -> bool:
+        """False when the artifacts come from a model trained on another feature list (an older volume)."""
+        return self.metrics.get("features") == list(FEATURES)
 
 
 def load_artifacts(artifacts_dir: str | Path) -> ModelArtifacts | None:
@@ -44,10 +94,11 @@ def load_artifacts(artifacts_dir: str | Path) -> ModelArtifacts | None:
 
 
 def applicant_frame(values: dict) -> pd.DataFrame:
-    """One applicant as the model expects it; the ratio is derived as in fct_credit_operations."""
+    """One applicant as the model expects it; derived features are computed as in fct_credit_operations."""
     row = dict(values)
-    income = row.get("monthly_income") or 0
-    row["installment_to_income_ratio"] = row["installment_amount"] / income if income > 0 else np.nan
+    row["reference_installment_to_income_ratio"] = reference_installment_to_income_ratio(
+        row["principal_amount"], row["installments_count"], row.get("monthly_income") or 0
+    )
     return feature_matrix(pd.DataFrame([row]))
 
 
@@ -62,4 +113,15 @@ def score(model: Pipeline, values: dict) -> tuple[float, pd.Series]:
     return pd_hat, contributions(model, row)
 
 
-__all__ = ["FEATURES", "RISK_BANDS", "ModelArtifacts", "applicant_frame", "load_artifacts", "risk_band", "score"]
+__all__ = [
+    "FEATURES",
+    "FIELD_META",
+    "RISK_BANDS",
+    "SimulationField",
+    "ModelArtifacts",
+    "applicant_frame",
+    "load_artifacts",
+    "risk_band",
+    "score",
+    "simulation_fields",
+]

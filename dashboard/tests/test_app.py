@@ -34,7 +34,8 @@ def test_all_three_tabs_render_without_exceptions(app):
     assert not app.exception
     assert [t.label for t in app.tabs] == ["Engineering", "Portfolio", "Risk simulation"]
     assert metric(app, "Dates loaded") == "10"
-    assert metric(app, "Default rate (labeled)") == "11.4%"  # 36 defaults / 315 labeled
+    # 36 defaults / 315 labeled: the 2025-08 cohort is left out because payroll loans there are immature
+    assert metric(app, "Default rate (mature cohorts)") == "11.4%"
     assert any("4 entity-dates above" in c.value for c in app.caption)
 
 
@@ -56,6 +57,14 @@ def test_without_a_trained_model_the_tab_explains_instead_of_failing(app, monkey
     assert any("make train" in i.value for i in app.info)
 
 
+def test_artifacts_of_an_older_model_are_reported_instead_of_failing(app, monkeypatch, outdated_artifacts_dir):
+    monkeypatch.setenv("ARTIFACTS_DIR", str(outdated_artifacts_dir))
+    get_settings.cache_clear()
+    app.run()
+    assert not app.exception
+    assert any("Model artifacts are out of date: run `make train`" in w.value for w in app.warning)
+
+
 def test_a_warehouse_outage_is_reported_not_raised(app, monkeypatch):
     def down(name, url):
         raise ConnectionError("connection refused")
@@ -64,3 +73,10 @@ def test_a_warehouse_outage_is_reported_not_raised(app, monkeypatch):
     app.run()
     assert not app.exception
     assert any("Could not read" in e.value for e in app.error)
+
+
+def test_odds_ratios_are_read_against_the_reference_category(app):
+    app.run()
+    headings = " ".join(s.value for s in app.subheader)
+    assert "vs. the reference category" in headings
+    assert "vs. the rest" not in headings

@@ -1,10 +1,16 @@
+import json
+import shutil
 from datetime import date, datetime, timedelta
 
+import joblib
 import numpy as np
 import pandas as pd
 import pytest
+from sklearn.compose import ColumnTransformer
+from sklearn.linear_model import LogisticRegression
+from sklearn.pipeline import Pipeline
 
-from ml.features import TARGET
+from ml.features import FEATURES, TARGET, reference_installment_to_income_ratio
 from ml.train import train
 
 
@@ -14,13 +20,16 @@ def artifacts_dir(tmp_path_factory):
     rng = np.random.default_rng(3)
     n = 2500
     income = rng.lognormal(8.2, 0.5, n)
-    installment = rng.lognormal(6, 0.5, n)
+    principal = rng.lognormal(9, 0.6, n)
+    installments = rng.choice([6, 12, 24, 48], n)
     frame = pd.DataFrame(
         {
-            "principal_amount": rng.lognormal(9, 0.6, n),
-            "installments_count": rng.choice([6, 12, 24, 48], n),
-            "installment_amount": installment,
-            "installment_to_income_ratio": installment / income,
+            "principal_amount": principal,
+            "installments_count": installments,
+            "reference_installment_to_income_ratio": [
+                reference_installment_to_income_ratio(p, k, i)
+                for p, k, i in zip(principal, installments, income, strict=True)
+            ],
             "bureau_score_at_origination": rng.integers(200, 1000, n),
             "age_at_registration": rng.integers(18, 80, n),
             "monthly_income": income,
@@ -38,9 +47,32 @@ def artifacts_dir(tmp_path_factory):
     logit = -1.8 - 0.008 * (frame["bureau_score_at_origination"] - 600)
     frame[TARGET] = (rng.random(n) < 1 / (1 + np.exp(-logit))).astype(int)
     frame["contract_date"] = pd.to_datetime("2024-07-01") + pd.to_timedelta(rng.integers(0, 382, n), unit="D")
+    frame["observed_at"] = pd.Timestamp("2026-10-15 23:59:59")
     target = tmp_path_factory.mktemp("ml_artifacts")
     train(frame, target)
     return target
+
+
+@pytest.fixture
+def outdated_artifacts_dir(artifacts_dir, tmp_path):
+    """Artifacts left in the ml-artifacts volume by a model trained on an older feature list (v1.0.0)."""
+    outdated = tmp_path / "outdated_artifacts"
+    shutil.copytree(artifacts_dir, outdated)
+    old = Pipeline(
+        [("prep", ColumnTransformer([("num", "passthrough", ["installment_amount"])])), ("model", LogisticRegression())]
+    )
+    old.fit(pd.DataFrame({"installment_amount": [100.0, 200.0, 300.0, 400.0]}), [0, 0, 1, 1])
+    joblib.dump(old, outdated / "model.joblib")
+    metrics = json.loads((outdated / "metrics.json").read_text())
+    metrics["features"] = [f for f in FEATURES if f != "reference_installment_to_income_ratio"] + [
+        "installment_amount",
+        "installment_to_income_ratio",
+    ]
+    metrics["split"].pop("validation")  # v1.0.0 had no validation period
+    for model_metrics in metrics["models"].values():
+        model_metrics.pop("validation")
+    (outdated / "metrics.json").write_text(json.dumps(metrics))
+    return outdated
 
 
 def fake_marts() -> dict[str, pd.DataFrame]:
@@ -85,7 +117,22 @@ def fake_marts() -> dict[str, pd.DataFrame]:
             ]
         ),
         "cohort_default": pd.DataFrame(
-            [{"year_month": m, "product_type": p, "labeled": 35, "defaults": 4} for m in months for p in products]
+            [
+                {"year_month": m, "product_type": p, "labeled": 35, "defaults": 4, "immature": 0}
+                for m in months
+                for p in products
+            ]
+            # a recent cohort: only short personal loans are labeled, the other products are immature
+            + [
+                {
+                    "year_month": "2025-08",
+                    "product_type": "personal_loan",
+                    "labeled": 35,
+                    "defaults": 20,
+                    "immature": 0,
+                },
+                {"year_month": "2025-08", "product_type": "payroll_loan", "labeled": 0, "defaults": 0, "immature": 40},
+            ]
         ),
         "label_status": pd.DataFrame(
             {"label_status": ["immature", "incomplete_schedule", "labeled"], "contracts": [50, 5, 105]}
