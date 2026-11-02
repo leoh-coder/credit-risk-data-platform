@@ -18,9 +18,9 @@ from urllib.parse import urlparse
 import duckdb
 
 from loader.config import Settings, get_settings
-from loader.lake import Lake
+from loader.lake import Lake, LoadError
 from loader.sql import quote_literal
-from loader.warehouse import LoadError, Warehouse
+from loader.warehouse import Warehouse
 
 logger = logging.getLogger("loader")
 
@@ -65,23 +65,23 @@ def run(settings: Settings) -> RunReport:
     try:
         lake, warehouse = Lake(con, settings.lake_root), Warehouse(con)
         warehouse.ensure_audit_table()
-        warehouse.ensure_raw_indexes(warehouse.raw_tables())
+        warehouse.ensure_raw_indexes()
         loaded_versions = warehouse.loaded_versions()
 
         for day in lake.committed_dates():
-            batch = lake.read_manifest(day)
-            if batch is None:
-                continue  # un-committed between listing and reading: an ingestion rerun started
-            if loaded_versions.get(day) == batch.manifest_sha256:
-                report.up_to_date.append(day)
-                continue
             try:
+                batch = lake.read_manifest(day)
+                if batch is None:
+                    continue  # un-committed between listing and reading: an ingestion rerun started
+                if loaded_versions.get(day) == batch.manifest_sha256:
+                    report.up_to_date.append(day)
+                    continue
                 rows = warehouse.load(lake, batch)
-            except (LoadError, duckdb.Error, ValueError, KeyError) as exc:
+            except (LoadError, duckdb.Error) as exc:
                 logger.error("date=%s ROLLED BACK, stays pending: %s", day, exc)
                 report.failed.append(day)
                 continue
-            warehouse.ensure_raw_indexes(batch.entities)  # tables created by this load
+            warehouse.ensure_raw_indexes()  # tables created by this load
             report.loaded.append(day)
             summary = " ".join(f"{entity}={n}" for entity, n in rows.items())
             logger.info("date=%s batch=%s loaded: %s", day, batch.batch_id, summary)

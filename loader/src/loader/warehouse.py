@@ -13,8 +13,8 @@ from datetime import UTC, date, datetime
 
 import duckdb
 
-from loader.lake import CommittedBatch, Lake
-from loader.sql import quote_literal, safe_identifier
+from loader.lake import ENTITIES, CommittedBatch, Lake, LoadError
+from loader.sql import quote_literal
 
 AUDIT_DDL = (
     """
@@ -38,10 +38,6 @@ AUDIT_DDL = (
 )
 
 
-class LoadError(Exception):
-    """The date was rolled back and stays pending for the next run."""
-
-
 def _utcnow() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)  # naive UTC, project-wide convention
 
@@ -55,20 +51,13 @@ class Warehouse:
             self.con.execute(f"CALL postgres_execute('pg', {quote_literal(statement)})")
         self.con.execute("CALL pg_clear_cache()")  # let DuckDB see a table it did not create itself
 
-    def ensure_raw_indexes(self, entities) -> None:
+    def ensure_raw_indexes(self) -> None:
         """Idempotent index on raw.<entity>(_reference_date); without it every per-date delete and
         reconciliation scans the whole table. Runs on its own connection, outside the load transaction."""
-        for entity in entities:
-            name = safe_identifier(entity)
+        for name in ENTITIES:
             if self._table_exists(name):
                 ddl = f"CREATE INDEX IF NOT EXISTS {name}__reference_date_idx ON raw.{name} (_reference_date)"
                 self.con.execute(f"CALL postgres_execute('pg', {quote_literal(ddl)})")
-
-    def raw_tables(self) -> list[str]:
-        rows = self.con.execute(
-            "SELECT table_name FROM duckdb_tables() WHERE database_name = 'pg' AND schema_name = 'raw'"
-        ).fetchall()
-        return [row[0] for row in rows]
 
     def loaded_versions(self) -> dict[date, str]:
         """reference_date -> manifest_sha256 of its latest successful load."""
@@ -107,7 +96,7 @@ class Warehouse:
         )
 
     def _replace_partition(self, lake: Lake, entity: str, day: date, expected: int, load_id: str) -> int:
-        table = f"pg.raw.{safe_identifier(entity)}"
+        table = f"pg.raw.{entity}"  # an allow-listed name (Lake.read_manifest)
         # hive_partitioning=false: reference_date already travels as the _reference_date lineage column.
         source = f"read_parquet({quote_literal(lake.partition_glob(entity, day))}, hive_partitioning = false)"
         lineage = "?::VARCHAR AS _load_id, ?::TIMESTAMP AS _loaded_at"

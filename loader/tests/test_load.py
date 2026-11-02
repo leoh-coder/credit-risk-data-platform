@@ -4,6 +4,7 @@ from dataclasses import replace
 
 import duckdb
 import psycopg
+import pytest
 
 from loader.lake import Lake
 from loader.main import run
@@ -200,6 +201,25 @@ def test_manifest_changed_during_load_is_rolled_back(settings, monkeypatch):
 
     assert report.failed == [DAY_2]
     assert raw_rows(settings, "customers", DAY_2) == 0
+
+
+def test_malformed_manifest_leaves_the_date_pending(settings, lake_path):
+    manifest_file(lake_path, DAY_2).write_text("{truncated")
+
+    report = run(settings)
+
+    assert report.loaded == [DAY_1]
+    assert report.failed == [DAY_2]
+    assert raw_rows(settings, "customers", DAY_2) == 0
+
+
+def test_a_bug_in_the_loader_is_raised_not_kept_as_a_pending_date(settings, monkeypatch):
+    def bug(*_args, **_kwargs):
+        raise KeyError("rows_valid")
+
+    monkeypatch.setattr(Warehouse, "_replace_partition", bug)
+    with pytest.raises(KeyError):
+        run(settings)
 
 
 def test_hostile_entity_name_in_manifest_never_reaches_sql(settings, lake_path):
