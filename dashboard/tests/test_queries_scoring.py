@@ -7,6 +7,7 @@ from dashboard.queries import QUERIES
 from dashboard.scoring import (
     FIELD_META,
     RISK_BANDS,
+    TOP_RISK_BAND,
     applicant_frame,
     load_artifacts,
     risk_band,
@@ -23,8 +24,7 @@ def test_every_query_reads_the_gold_layer_only(name):
     assert all(r.startswith("marts.") for r in relations), relations
 
 
-def test_no_query_touches_outcome_columns_as_inputs_to_scoring():
-    # the dashboard may *report* labels, but scoring only ever goes through the allowlist
+def test_applicant_frame_has_exactly_the_model_features_in_order():
     row = applicant_frame(dict.fromkeys(FEATURES, 1) | {"product_type": "x", "employment_type": "y"})
     assert list(row.columns) == list(FEATURES)
 
@@ -46,7 +46,7 @@ def test_reference_ratio_is_derived_not_typed():
 )
 def test_risk_band_boundaries(pd_hat, band):
     assert risk_band(pd_hat) == band
-    assert [b for b, _ in RISK_BANDS] == ["A", "B", "C", "D", "E"]
+    assert [*(b for b, _ in RISK_BANDS), TOP_RISK_BAND] == ["A", "B", "C", "D", "E"]
 
 
 def test_missing_artifacts_mean_no_model_not_an_error(tmp_path):

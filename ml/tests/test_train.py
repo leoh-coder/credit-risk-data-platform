@@ -131,3 +131,14 @@ def test_hyperparameters_are_chosen_by_validation_auc(synthetic_population, tmp_
     best = max(candidates, key=lambda c: c["validation_auc"])
     assert len(candidates) > 1
     assert report["models"][model]["params"] == best["params"]
+
+
+def test_help_prints_usage_without_training(monkeypatch, capsys):
+    def no_training(*_args, **_kwargs):
+        raise AssertionError("--help must not read the marts")
+
+    monkeypatch.setattr(ml_train, "load_population", no_training)
+    with pytest.raises(SystemExit) as exit_info:
+        ml_train.main(["--help"])
+    assert exit_info.value.code == 0
+    assert "usage:" in capsys.readouterr().out

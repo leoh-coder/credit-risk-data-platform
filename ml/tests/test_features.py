@@ -67,11 +67,6 @@ def test_deliberately_excluded_columns_never_enter_the_model(column):
         check_feature_list([*FEATURES, column])
 
 
-def test_columns_outside_the_allowlist_raise_even_if_harmless_looking():
-    with pytest.raises(LeakageError, match="not in the allowlist"):
-        check_feature_list([*FEATURES, "interest_rate_monthly"])  # excluded on purpose
-
-
 def test_feature_matrix_keeps_exactly_the_allowlist_and_drops_everything_else():
     # A "canary" frame as it comes from the marts, carrying the target and outcome columns too.
     row = dict.fromkeys(FEATURES, 1)

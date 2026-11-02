@@ -18,7 +18,15 @@ import streamlit as st
 
 from dashboard import queries
 from dashboard.config import get_settings
-from dashboard.scoring import RISK_BANDS, applicant_frame, load_artifacts, risk_band, score, simulation_fields
+from dashboard.scoring import (
+    RISK_BANDS,
+    TOP_RISK_BAND,
+    applicant_frame,
+    load_artifacts,
+    risk_band,
+    score,
+    simulation_fields,
+)
 from ml.features import CATEGORICAL_FEATURES, REFERENCE_CATEGORIES
 
 FRESHNESS_WARN_HOURS, FRESHNESS_ERROR_HOURS = 48, 168  # same as dbt source freshness (tested)
@@ -173,7 +181,7 @@ def risk_tab() -> None:
     ratio = applicant_frame(values).at[0, "reference_installment_to_income_ratio"]
     c.metric("Installment / income at the reference rate", f"{ratio:.1%}")
     st.caption(
-        "Bands: " + ", ".join(f"{band} < {upper:.0%}" for band, upper in RISK_BANDS[:-1]) + ", E otherwise "
+        "Bands: " + ", ".join(f"{band} < {upper:.0%}" for band, upper in RISK_BANDS) + f", {TOP_RISK_BAND} otherwise "
         "(display only, not a credit policy)."
     )
     st.plotly_chart(contribution_chart(parts), width="stretch")
