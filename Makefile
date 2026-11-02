@@ -14,10 +14,10 @@ up:  ## start lake + warehouse
 	docker compose up -d --wait
 
 down:  ## stop containers (keeps data)
-	docker compose down
+	docker compose --profile jobs --profile app --profile docs down
 
 clean:  ## stop containers AND delete all data volumes
-	docker compose down -v
+	docker compose --profile jobs --profile app --profile docs down -v
 
 ps:  ## container status
 	docker compose ps
