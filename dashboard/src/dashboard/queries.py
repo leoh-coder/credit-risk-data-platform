@@ -1,4 +1,5 @@
-"""Every query the dashboard runs; each reads `marts.*` only (enforced by a test)."""
+"""Every query the dashboard runs; each reads `marts.*` only (enforced by a test). Numeric columns are cast
+to double precision, so pandas receives floats instead of Decimal (checked in CI against the marts)."""
 
 from __future__ import annotations
 
@@ -16,15 +17,24 @@ QUERIES: dict[str, str] = {
         from marts.dq_pipeline_loads
     """,
     "pipeline_loads": """
-        select reference_date, rows_loaded, load_seconds, finished_at
+        select reference_date, rows_loaded, load_seconds::double precision as load_seconds, finished_at
         from marts.dq_pipeline_loads
         where is_latest_for_date
         order by reference_date
     """,
     "ingestion_quality": """
-        select reference_date, entity, rows_received, rows_quarantined, quarantine_pct, quarantine_pct_7d,
-               dates_in_window_7d, quarantine_budget_warn_pct, quarantine_budget_error_pct,
-               is_over_warn_budget, is_over_error_budget
+        select
+            reference_date,
+            entity,
+            rows_received,
+            rows_quarantined,
+            quarantine_pct::double precision                as quarantine_pct,
+            quarantine_pct_7d::double precision             as quarantine_pct_7d,
+            dates_in_window_7d,
+            quarantine_budget_warn_pct::double precision    as quarantine_budget_warn_pct,
+            quarantine_budget_error_pct::double precision   as quarantine_budget_error_pct,
+            is_over_warn_budget,
+            is_over_error_budget
         from marts.dq_ingestion_daily
         order by reference_date, entity
     """,
@@ -34,7 +44,7 @@ QUERIES: dict[str, str] = {
             d.year_month,
             p.product_type,
             count(*)                                    as contracts,
-            sum(f.principal_amount)                     as principal_amount
+            sum(f.principal_amount)::double precision   as principal_amount
         from marts.fct_credit_operations as f
         inner join marts.dim_date as d on d.date_key = f.contract_date_key
         inner join marts.dim_products as p using (product_key)
@@ -66,8 +76,8 @@ QUERIES: dict[str, str] = {
         select
             p.product_type,
             i.dpd_bucket,
-            count(*)                    as installments,
-            sum(i.amount_overdue)       as amount_overdue
+            count(*)                                    as installments,
+            sum(i.amount_overdue)::double precision     as amount_overdue
         from marts.fct_installments as i
         inner join marts.dim_products as p using (product_key)
         where i.dpd_bucket <> 'current'
@@ -81,11 +91,6 @@ def fetch(name: str, database_url) -> pd.DataFrame:
     engine = create_engine(database_url)
     try:
         with engine.connect() as connection:
-            frame = pd.read_sql(text(QUERIES[name]), connection)
+            return pd.read_sql(text(QUERIES[name]), connection)
     finally:
         engine.dispose()
-    # numeric columns arrive as Decimal
-    for column in frame.columns:
-        if frame[column].dtype == object and len(frame) and type(frame[column].iat[0]).__name__ == "Decimal":
-            frame[column] = frame[column].astype(float)
-    return frame

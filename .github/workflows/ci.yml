@@ -182,14 +182,19 @@ jobs:
           print(f"population query as ml_reader: {len(population)} rows, {population.shape[1]} columns")
           PY
 
-      - name: Every dashboard query runs against the marts as dashboard_reader
+      - name: Every dashboard query runs against the marts as dashboard_reader, without Decimal values
         run: |
           docker compose --profile app run --rm -T dashboard python - <<'PY'
+          from decimal import Decimal
           from dashboard.config import get_settings
           from dashboard.queries import QUERIES, fetch
+          decimals = []
           for name in QUERIES:
               frame = fetch(name, get_settings().database_url)
               print(f"{name}: {len(frame)} rows")
+              decimals += [f"{name}.{c}" for c in frame if frame[c].map(lambda v: isinstance(v, Decimal)).any()]
+          if decimals:
+              raise SystemExit(f"Decimal values, cast them to double precision in the SQL: {decimals}")
           PY
 
       - name: Dashboard container becomes healthy

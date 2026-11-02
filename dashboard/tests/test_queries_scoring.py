@@ -1,7 +1,6 @@
 import re
 
 import numpy as np
-import pandas as pd
 import pytest
 
 from dashboard.queries import QUERIES
@@ -78,31 +77,6 @@ def test_a_lower_bureau_score_raises_the_simulated_pd(artifacts_dir):
     low, _ = score(artifacts.model, values | {"bureau_score_at_origination": 300})
     high, _ = score(artifacts.model, values | {"bureau_score_at_origination": 900})
     assert low > high
-
-
-def test_fetch_turns_decimals_into_floats(monkeypatch):
-    from decimal import Decimal
-
-    import dashboard.queries as queries
-
-    class FakeEngine:
-        def connect(self):
-            return self
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *exc):
-            return False
-
-        def dispose(self):
-            pass
-
-    monkeypatch.setattr(queries, "create_engine", lambda url: FakeEngine())
-    monkeypatch.setattr(queries.pd, "read_sql", lambda *a, **k: pd.DataFrame({"x": [Decimal("1.50")], "y": ["a"]}))
-    frame = queries.fetch("label_status", "postgresql://unused")
-    assert frame["x"].dtype == float
-    assert frame["y"].tolist() == ["a"]
 
 
 def test_every_non_derived_numeric_feature_has_a_simulation_field():
