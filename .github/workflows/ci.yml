@@ -172,6 +172,16 @@ jobs:
       - name: Build the ml image
         run: docker compose build ml
 
+      # 0 rows is expected after 3 days; the query still fails on a renamed column or a broken join.
+      - name: ML population query runs against the marts as ml_reader
+        run: |
+          docker compose run --rm -T --entrypoint python ml - <<'PY'
+          from ml.config import get_settings
+          from ml.data import load_population
+          population = load_population(get_settings().database_url)
+          print(f"population query as ml_reader: {len(population)} rows, {population.shape[1]} columns")
+          PY
+
       - name: Every dashboard query runs against the marts as dashboard_reader
         run: |
           docker compose --profile app run --rm -T dashboard python - <<'PY'
