@@ -151,17 +151,19 @@ models:
       - dq_rate_within_budget:
           name: dq_budget_unknown_customer_warn
           arguments: {bad_rows: "customer_key = '-1'", max_pct: "{{ var('dq_unknown_customer_warn_pct') }}"}
-          config: {severity: warn}
+          config: {severity: warn, store_failures: true}
       - dq_rate_within_budget:
           name: dq_budget_unknown_customer_error
           arguments: {bad_rows: "customer_key = '-1'", max_pct: "{{ var('dq_unknown_customer_error_pct') }}"}
+          config: {store_failures: true}
       - dq_rate_within_budget:
           name: dq_budget_incomplete_window_warn
           arguments: {bad_rows: "not is_window_complete", max_pct: "{{ var('dq_incomplete_window_warn_pct') }}"}
-          config: {severity: warn}
+          config: {severity: warn, store_failures: true}
       - dq_rate_within_budget:
           name: dq_budget_incomplete_window_error
           arguments: {bad_rows: "not is_window_complete", max_pct: "{{ var('dq_incomplete_window_error_pct') }}"}
+          config: {store_failures: true}
     columns:
       - name: operation_id
         description: Natural key of the contract (degenerate dimension).
@@ -270,10 +272,11 @@ models:
       - dbt_utils.expression_is_true:
           name: dq_budget_quarantine_warn
           arguments: {expression: "not is_over_warn_budget"}
-          config: {severity: warn}
+          config: {severity: warn, store_failures: true}
       - dbt_utils.expression_is_true:
           name: dq_budget_quarantine_error
           arguments: {expression: "not is_over_error_budget"}
+          config: {store_failures: true}
     columns:
       - name: ingestion_quality_key
         description: "{{ doc('surrogate_key') }}"
