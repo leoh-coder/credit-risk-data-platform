@@ -43,6 +43,7 @@ def test_outcome_columns_are_all_forbidden():
 def test_allowlist_and_forbidden_list_do_not_overlap():
     assert not set(FEATURES) & FORBIDDEN_COLUMNS
     assert TARGET not in FEATURES
+    check_feature_list(FEATURES)  # the allowlist itself passes the leakage check
 
 
 def test_allowlist_is_partitioned_into_numeric_and_categorical():

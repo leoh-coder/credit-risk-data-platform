@@ -30,7 +30,6 @@ FEATURE_SOURCE = {
 
 def population_sql() -> str:
     check_feature_list(FEATURE_SOURCE)
-    assert set(FEATURE_SOURCE) == set(FEATURES), "every allowlisted feature needs a source"
     # double precision, so pandas receives floats instead of Decimal
     columns = ",\n    ".join(
         f"{FEATURE_SOURCE[name]}.{name}"

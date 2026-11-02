@@ -118,5 +118,4 @@ def check_feature_list(columns) -> None:
 
 def feature_matrix(frame: pd.DataFrame) -> pd.DataFrame:
     """Exactly the allowlisted columns, in a fixed order; anything else in `frame` is ignored."""
-    check_feature_list(FEATURES)
     return frame.loc[:, list(FEATURES)].copy()
