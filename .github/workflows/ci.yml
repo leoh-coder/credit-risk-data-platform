@@ -172,7 +172,7 @@ jobs:
       - name: Build the ml image
         run: docker compose build ml
 
-      # 0 rows is expected after 3 days; the query still fails on a renamed column or a broken join.
+      # 3 days label only a few short loans (none trainable); the query still fails on a renamed column or a broken join.
       - name: ML population query runs against the marts as ml_reader
         run: |
           docker compose run --rm -T --entrypoint python ml - <<'PY'
