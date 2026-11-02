@@ -35,7 +35,7 @@ select
     i.installment_number,
     i.amount_due,
     i.amount_paid,
-    (case when i.is_due and not i.is_paid then i.amount_due else 0 end)::numeric(18, 2)
+    (case when i.days_past_due > 0 and not i.is_paid then i.amount_due else 0 end)::numeric(18, 2)
                                                         as amount_overdue,
     i.is_paid,
     i.is_due,

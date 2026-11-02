@@ -455,7 +455,7 @@ models:
         data_type: numeric(18, 2)
         constraints: [{type: not_null}]
       - name: amount_overdue
-        description: amount_due when the installment is due and unpaid, else 0.
+        description: amount_due when the installment is unpaid and past due (days_past_due > 0), else 0.
         data_type: numeric(18, 2)
         constraints: [{type: not_null}]
       - name: is_paid
@@ -540,3 +540,32 @@ unit_tests:
         - {operation_id: expensive_rate,   reference_installment_to_income_ratio: 0.2009}
         - {operation_id: longer_term,      reference_installment_to_income_ratio: 0.1181}
         - {operation_id: unknown_customer, reference_installment_to_income_ratio: null}
+
+  - name: installment_is_overdue_only_after_its_due_date
+    description: >
+      Observation 2026-10-15. An unpaid installment due that same day has 0 days past due (bucket current),
+      so nothing is overdue yet; one day later its amount is overdue. Paid and not-yet-due installments
+      are never overdue.
+    model: fct_installments
+    given:
+      - input: ref('int_installments__delinquency')
+        rows:
+          - {installment_id: due_today,  operation_id: o1, amount_due: 100, amount_paid: 0,   is_paid: false, is_due: true,  days_past_due: 0, dpd_bucket: current}
+          - {installment_id: one_day,    operation_id: o1, amount_due: 100, amount_paid: 0,   is_paid: false, is_due: true,  days_past_due: 1, dpd_bucket: 1-30}
+          - {installment_id: paid_late,  operation_id: o1, amount_due: 100, amount_paid: 100, is_paid: true,  is_due: true,  days_past_due: 4, dpd_bucket: 1-30}
+          - {installment_id: not_due,    operation_id: o1, amount_due: 100, amount_paid: 0,   is_paid: false, is_due: false, days_past_due: 0, dpd_bucket: current}
+      - input: ref('stg_core_banking__credit_operations')
+        rows:
+          - {operation_id: o1, customer_id: C1, product_type: personal_loan}
+      - input: ref('dim_customers')
+        rows:
+          - {customer_key: k1, customer_id: C1, is_unknown_member: false}
+      - input: ref('dim_products')
+        rows:
+          - {product_key: p1, product_type: personal_loan, is_unknown_member: false}
+    expect:
+      rows:
+        - {installment_id: due_today, amount_overdue: 0}
+        - {installment_id: one_day,   amount_overdue: 100}
+        - {installment_id: paid_late, amount_overdue: 0}
+        - {installment_id: not_due,   amount_overdue: 0}
