@@ -71,21 +71,14 @@ def test_first_run_loads_every_committed_date_and_audits_it(settings, lake_path)
     assert "reference_date" not in columns  # hive partition key not duplicated
 
 
-def test_audit_table_from_an_older_loader_is_migrated_in_place(settings):
-    query_ddl = (
-        "create table audit.lake_loads (load_id uuid primary key, reference_date date not null, "
-        "batch_id text not null, manifest_sha256 char(64) not null, contract_version text not null, "
-        "rows_loaded jsonb not null, started_at timestamp not null, finished_at timestamp not null)"
+def test_audit_table_requires_the_manifest_counts(settings):
+    run(settings)
+    nullable = query(
+        settings,
+        "select is_nullable from information_schema.columns "
+        "where table_schema = 'audit' and table_name = 'lake_loads' and column_name = 'manifest_entities'",
     )
-    with psycopg.connect(settings.postgres_dsn, autocommit=True) as conn:
-        conn.execute(query_ddl)
-
-    report = run(settings)
-
-    assert report.loaded == [DAY_1, DAY_2]
-    assert query(settings, "select count(*) from audit.lake_loads where manifest_entities is not null") == [
-        (2,)
-    ]
+    assert nullable == [("NO",)]
 
 
 def raw_reference_date_indexes(settings) -> set[str]:

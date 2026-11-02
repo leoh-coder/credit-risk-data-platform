@@ -25,6 +25,7 @@ AUDIT_DDL = (
         manifest_sha256  char(64)    NOT NULL,
         contract_version text        NOT NULL,
         rows_loaded      jsonb       NOT NULL,
+        manifest_entities jsonb      NOT NULL,
         started_at       timestamp   NOT NULL,
         finished_at      timestamp   NOT NULL
     )
@@ -32,11 +33,8 @@ AUDIT_DDL = (
     "CREATE INDEX IF NOT EXISTS lake_loads_reference_date_idx "
     "ON audit.lake_loads (reference_date, finished_at)",
     "COMMENT ON TABLE audit.lake_loads IS 'One row per committed load of a lake reference_date into raw'",
-    # Idempotent migration for tables created before this column existed.
-    "ALTER TABLE audit.lake_loads ADD COLUMN IF NOT EXISTS manifest_entities jsonb",
     "COMMENT ON COLUMN audit.lake_loads.manifest_entities IS "
-    "'Per-entity counts from the lake manifest (received/valid/quarantined); "
-    "NULL for loads before 2026-10-16'",
+    "'Per-entity counts from the lake manifest (received/valid/quarantined)'",
 )
 
 
