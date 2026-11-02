@@ -1,6 +1,7 @@
 version: 2
 
 # Gold interface. Contracts are enforced: a mart must produce exactly these columns, types and constraints.
+# Postgres enforces each primary key (no NULL, no duplicate); `unique` stays for Redshift, which does not.
 
 models:
   - name: dim_customers
@@ -17,7 +18,7 @@ models:
         description: "{{ doc('surrogate_key') }}"
         data_type: text
         constraints: [{type: primary_key}]
-        data_tests: [unique, not_null]
+        data_tests: [unique]
       - name: customer_id
         description: Natural key from the KYC system ('UNKNOWN' for the unknown member).
         data_type: text
@@ -87,7 +88,7 @@ models:
         description: "{{ doc('surrogate_key') }}"
         data_type: text
         constraints: [{type: primary_key}]
-        data_tests: [unique, not_null]
+        data_tests: [unique]
       - name: product_type
         data_type: text
         constraints: [{type: not_null}]
@@ -113,7 +114,7 @@ models:
         description: "{{ doc('date_key') }}"
         data_type: integer
         constraints: [{type: primary_key}]
-        data_tests: [unique, not_null]
+        data_tests: [unique]
       - name: calendar_date
         data_type: date
         constraints: [{type: not_null}]
@@ -166,7 +167,7 @@ models:
         description: Natural key of the contract (degenerate dimension).
         data_type: text
         constraints: [{type: primary_key}]
-        data_tests: [unique, not_null]
+        data_tests: [unique]
       - name: customer_key
         description: "{{ doc('unknown_member') }}"
         data_type: text
@@ -278,7 +279,7 @@ models:
         description: "{{ doc('surrogate_key') }}"
         data_type: text
         constraints: [{type: primary_key}]
-        data_tests: [unique, not_null]
+        data_tests: [unique]
       - name: reference_date_key
         description: "{{ doc('date_key') }}"
         data_type: integer
@@ -362,7 +363,7 @@ models:
       - name: load_id
         data_type: text
         constraints: [{type: primary_key}]
-        data_tests: [unique, not_null]
+        data_tests: [unique]
       - name: reference_date_key
         description: "{{ doc('date_key') }}"
         data_type: integer
@@ -410,7 +411,7 @@ models:
       - name: installment_id
         data_type: text
         constraints: [{type: primary_key}]
-        data_tests: [unique, not_null]
+        data_tests: [unique]
       - name: operation_id
         description: Degenerate dimension; may not exist in fct_credit_operations if the operation was quarantined.
         data_type: text
