@@ -113,7 +113,7 @@ contracts only.
   keeps that for monitoring), so gaps cannot over-represent defaults.
 - Orphans from row-level quarantine point to a `'-1'` unknown member, so facts reconcile with
   `raw`.
-- Data quality (`dbt build`: 130 nodes, 0 warnings on the full history):
+- Data quality (`dbt build`: 124 nodes, 0 warnings on the full history):
   - enforced model contracts on every mart;
   - domains, ranges, row invariants and composite keys;
   - singular tests reconciling lake → `raw` → facts, checking schedules against contracts, and
@@ -126,9 +126,9 @@ contracts only.
     | Unknown customer | 2% | 5% |
     | Incomplete label window | 15% | 30% |
     | Quarantine per entity, rolling 7 loaded dates | 5% | 10% |
-  - failing rows stored in `audit`, source freshness on `_loaded_at`, and 4 dbt unit tests
+  - failing rows stored in `audit`, source freshness on `_loaded_at`, and 5 dbt unit tests
     (DPD and censoring branches, maturity boundaries, rolling quarantine window, reference-rate
-    affordability).
+    affordability, overdue amount).
 
 ### PD model (`ml/`)
 
@@ -261,11 +261,11 @@ make test lint
 
 | Package | Tests | Notes |
 |---|---|---|
-| `ingestion` | 26 | Includes the S3 code path against a moto emulator |
-| `loader` | 15 | Real Postgres, with a throwaway database per test (skipped locally if unreachable; fails in CI) |
+| `ingestion` | 28 | Includes the S3 code path against a moto emulator |
+| `loader` | 22 | Real Postgres, with a throwaway database per test (skipped locally if unreachable; fails in CI) |
 | `ml` | 72 | Allowlist and leakage, split limits, metrics on hand-computed cases, exact contributions, artifacts |
 | `dashboard` | 31 | Marts-only queries, scoring, and the whole app run headless with `AppTest` |
-| dbt | 130 nodes | Run by `make transform` |
+| dbt | 124 nodes | Run by `make transform` |
 
 CI (GitHub Actions) runs ruff and pytest per package. A compose smoke run then covers a 3-day
 backfill, load, incremental no-op, `dbt build`, freshness, the docs artifact, grants and login
