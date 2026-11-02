@@ -222,7 +222,7 @@ optional (the equivalent `docker compose` command is shown next to each target).
 ```bash
 cp .env.example .env                              # then change the secrets
 make up                                           # docker compose up -d --wait
-CUSTOMERS_PER_BATCH=30 make backfill START=2024-07-01 END=2026-10-15 AS_OF=2026-10-15
+make backfill                                     # 2024-07-01..2026-10-15, as of 2026-10-15
 make load                                         # docker compose run --rm --build loader run
 make transform                                    # docker compose run --rm --build dbt build
 make train                                        # docker compose run --rm --build ml
@@ -240,7 +240,6 @@ make dashboard                                    # docker compose --profile app
 The full backfill takes about 40 minutes on an HDD. A short range (for example a week) is
 enough for everything except training, because the model needs mature cohorts.
 
-- `make backfill` without `CUSTOMERS_PER_BATCH` uses the `.env` value (150).
 - `make load` is incremental: a second run reports `0 loaded, N already up to date`.
 - `make freshness` checks the freshness of `raw`.
 - `make roles` adds the login roles to a volume created before they existed.

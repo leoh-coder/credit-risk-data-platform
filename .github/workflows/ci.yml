@@ -73,6 +73,8 @@ jobs:
       START: "2026-01-01"
       END: "2026-01-03"
       AS_OF: "2026-10-15"
+      # Larger daily batches than the default, so 3 days still give the data-quality budgets enough rows.
+      CUSTOMERS_PER_BATCH: "150"
     steps:
       - uses: actions/checkout@v7
 

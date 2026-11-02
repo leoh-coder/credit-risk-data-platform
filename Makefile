@@ -1,7 +1,7 @@
 .PHONY: help setup up down clean ps logs roles ingest backfill load transform freshness docs train dashboard test lint
 
-START ?= 2025-10-01
-END   ?= 2026-09-30
+START ?= 2024-07-01
+END   ?= 2026-10-15
 AS_OF ?= 2026-10-15
 
 help:  ## list available commands

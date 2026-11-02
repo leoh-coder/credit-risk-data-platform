@@ -86,7 +86,7 @@ services:
     environment:
       <<: *lake-env
       SEED: ${SEED:-42}
-      CUSTOMERS_PER_BATCH: ${CUSTOMERS_PER_BATCH:-150}
+      CUSTOMERS_PER_BATCH: ${CUSTOMERS_PER_BATCH:-30}
       DIRTY_RATE: ${DIRTY_RATE:-0.01}
     depends_on:
       seaweedfs:
