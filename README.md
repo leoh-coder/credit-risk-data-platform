@@ -249,6 +249,7 @@ enough for everything except training, because the model needs mature cohorts.
   ```bash
   PYTHONPATH=ingestion/src python -m ingestion.main backfill --start 2026-01-01 --end 2026-01-02 --as-of 2026-10-15
   ```
+- Outside Docker against SeaweedFS, set `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (Compose translates `LAKE_ACCESS_KEY` / `LAKE_SECRET_KEY` only for the containers); `.env.example` lists the other optional settings.
 
 ## Tests
 
