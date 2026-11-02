@@ -101,9 +101,13 @@ def fake_marts() -> dict[str, pd.DataFrame]:
                     "rows_received": 100,
                     "rows_quarantined": 1,
                     "quarantine_pct": 1.0,
-                    # day 0: high but a partial window (not counted); day 8: high on a full window
                     "quarantine_pct_7d": 6.0 if d in (days[0], days[8]) else 1.2,
                     "dates_in_window_7d": min(i + 1, 7),
+                    # budgets and flags come from the warehouse; the dashboard must not re-derive them
+                    "quarantine_budget_warn_pct": 5.5,
+                    "quarantine_budget_error_pct": 9.0,
+                    "is_over_warn_budget": d == days[8] and e == "customers",
+                    "is_over_error_budget": False,
                 }
                 for i, d in enumerate(days)
                 for e in entities

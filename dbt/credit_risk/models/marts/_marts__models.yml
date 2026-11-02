@@ -265,14 +265,14 @@ models:
       - dbt_utils.expression_is_true:
           name: dq_ingestion_window_counts_add_up
           arguments: {expression: "rows_quarantined_7d <= rows_received_7d and dates_in_window_7d between 1 and 7"}
-      # Budget on the rolling 7-date rate, evaluated once the window holds 7 loaded dates.
+      # Budget on the rolling 7-date rate; the rule lives in the model (is_over_*_budget).
       - dbt_utils.expression_is_true:
           name: dq_budget_quarantine_warn
-          arguments: {expression: "dates_in_window_7d < 7 or quarantine_pct_7d <= {{ var('dq_quarantine_warn_pct') }}"}
+          arguments: {expression: "not is_over_warn_budget"}
           config: {severity: warn}
       - dbt_utils.expression_is_true:
           name: dq_budget_quarantine_error
-          arguments: {expression: "dates_in_window_7d < 7 or quarantine_pct_7d <= {{ var('dq_quarantine_error_pct') }}"}
+          arguments: {expression: "not is_over_error_budget"}
     columns:
       - name: ingestion_quality_key
         description: "{{ doc('surrogate_key') }}"
@@ -330,6 +330,22 @@ models:
         data_type: text
       - name: loaded_at
         data_type: timestamp
+      - name: quarantine_budget_warn_pct
+        description: Warning budget for quarantine_pct_7d, in percent (var dq_quarantine_warn_pct).
+        data_type: numeric(6, 2)
+        constraints: [{type: not_null}]
+      - name: quarantine_budget_error_pct
+        description: Error budget for quarantine_pct_7d, in percent (var dq_quarantine_error_pct).
+        data_type: numeric(6, 2)
+        constraints: [{type: not_null}]
+      - name: is_over_warn_budget
+        description: The window holds 7 loaded dates and quarantine_pct_7d is above the warning budget.
+        data_type: boolean
+        constraints: [{type: not_null}]
+      - name: is_over_error_budget
+        description: The window holds 7 loaded dates and quarantine_pct_7d is above the error budget.
+        data_type: boolean
+        constraints: [{type: not_null}]
 
   - name: dq_pipeline_loads
     description: >
@@ -458,8 +474,12 @@ unit_tests:
   - name: quarantine_budget_uses_latest_load_and_last_7_loaded_dates
     description: >
       Eight loaded dates of one entity (10 rows each). 2026-01-01 was loaded twice: the older load
-      (9 quarantined) must be ignored. The 8th window covers dates 2..8 only.
+      (9 quarantined) must be ignored. The 8th window covers dates 2..8 only. Budgets 10% (warn) and
+      12% (error) apply once the window holds 7 dates: dates 1..6 are at 10% on a partial window, date 7
+      sits exactly on the warn budget (not over), date 8 is over both.
     model: dq_ingestion_daily
+    overrides:
+      vars: {dq_quarantine_warn_pct: 10, dq_quarantine_error_pct: 12}
     given:
       - input: source('loader', 'lake_loads')
         rows:
@@ -474,14 +494,14 @@ unit_tests:
           - {reference_date: 2026-01-08, finished_at: 2026-10-02 00:00:00, manifest_entities: '{"customers": {"rows_received": 10, "rows_valid": 7, "rows_quarantined": 3}}'}
     expect:
       rows:
-        - {reference_date: 2026-01-01, rows_quarantined: 1, rows_received_7d: 10, rows_quarantined_7d: 1, dates_in_window_7d: 1, quarantine_pct_7d: 10.00}
-        - {reference_date: 2026-01-02, rows_quarantined: 1, rows_received_7d: 20, rows_quarantined_7d: 2, dates_in_window_7d: 2, quarantine_pct_7d: 10.00}
-        - {reference_date: 2026-01-03, rows_quarantined: 1, rows_received_7d: 30, rows_quarantined_7d: 3, dates_in_window_7d: 3, quarantine_pct_7d: 10.00}
-        - {reference_date: 2026-01-04, rows_quarantined: 1, rows_received_7d: 40, rows_quarantined_7d: 4, dates_in_window_7d: 4, quarantine_pct_7d: 10.00}
-        - {reference_date: 2026-01-05, rows_quarantined: 1, rows_received_7d: 50, rows_quarantined_7d: 5, dates_in_window_7d: 5, quarantine_pct_7d: 10.00}
-        - {reference_date: 2026-01-06, rows_quarantined: 1, rows_received_7d: 60, rows_quarantined_7d: 6, dates_in_window_7d: 6, quarantine_pct_7d: 10.00}
-        - {reference_date: 2026-01-07, rows_quarantined: 1, rows_received_7d: 70, rows_quarantined_7d: 7, dates_in_window_7d: 7, quarantine_pct_7d: 10.00}
-        - {reference_date: 2026-01-08, rows_quarantined: 3, rows_received_7d: 70, rows_quarantined_7d: 9, dates_in_window_7d: 7, quarantine_pct_7d: 12.86}
+        - {reference_date: 2026-01-01, rows_quarantined: 1, rows_received_7d: 10, rows_quarantined_7d: 1, dates_in_window_7d: 1, quarantine_pct_7d: 10.00, quarantine_budget_warn_pct: 10.00, quarantine_budget_error_pct: 12.00, is_over_warn_budget: false, is_over_error_budget: false}
+        - {reference_date: 2026-01-02, rows_quarantined: 1, rows_received_7d: 20, rows_quarantined_7d: 2, dates_in_window_7d: 2, quarantine_pct_7d: 10.00, quarantine_budget_warn_pct: 10.00, quarantine_budget_error_pct: 12.00, is_over_warn_budget: false, is_over_error_budget: false}
+        - {reference_date: 2026-01-03, rows_quarantined: 1, rows_received_7d: 30, rows_quarantined_7d: 3, dates_in_window_7d: 3, quarantine_pct_7d: 10.00, quarantine_budget_warn_pct: 10.00, quarantine_budget_error_pct: 12.00, is_over_warn_budget: false, is_over_error_budget: false}
+        - {reference_date: 2026-01-04, rows_quarantined: 1, rows_received_7d: 40, rows_quarantined_7d: 4, dates_in_window_7d: 4, quarantine_pct_7d: 10.00, quarantine_budget_warn_pct: 10.00, quarantine_budget_error_pct: 12.00, is_over_warn_budget: false, is_over_error_budget: false}
+        - {reference_date: 2026-01-05, rows_quarantined: 1, rows_received_7d: 50, rows_quarantined_7d: 5, dates_in_window_7d: 5, quarantine_pct_7d: 10.00, quarantine_budget_warn_pct: 10.00, quarantine_budget_error_pct: 12.00, is_over_warn_budget: false, is_over_error_budget: false}
+        - {reference_date: 2026-01-06, rows_quarantined: 1, rows_received_7d: 60, rows_quarantined_7d: 6, dates_in_window_7d: 6, quarantine_pct_7d: 10.00, quarantine_budget_warn_pct: 10.00, quarantine_budget_error_pct: 12.00, is_over_warn_budget: false, is_over_error_budget: false}
+        - {reference_date: 2026-01-07, rows_quarantined: 1, rows_received_7d: 70, rows_quarantined_7d: 7, dates_in_window_7d: 7, quarantine_pct_7d: 10.00, quarantine_budget_warn_pct: 10.00, quarantine_budget_error_pct: 12.00, is_over_warn_budget: false, is_over_error_budget: false}
+        - {reference_date: 2026-01-08, rows_quarantined: 3, rows_received_7d: 70, rows_quarantined_7d: 9, dates_in_window_7d: 7, quarantine_pct_7d: 12.86, quarantine_budget_warn_pct: 10.00, quarantine_budget_error_pct: 12.00, is_over_warn_budget: true, is_over_error_budget: true}
 
   - name: reference_affordability_ignores_the_contract_rate
     description: >

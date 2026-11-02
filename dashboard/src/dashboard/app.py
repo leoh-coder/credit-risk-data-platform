@@ -21,8 +21,7 @@ from dashboard.config import get_settings
 from dashboard.scoring import RISK_BANDS, applicant_frame, load_artifacts, risk_band, score, simulation_fields
 from ml.features import CATEGORICAL_FEATURES, REFERENCE_CATEGORIES
 
-DQ_QUARANTINE_WARN_PCT, DQ_QUARANTINE_ERROR_PCT = 5, 10  # same budget as the dbt vars
-FRESHNESS_WARN_HOURS, FRESHNESS_ERROR_HOURS = 48, 168  # same as dbt source freshness
+FRESHNESS_WARN_HOURS, FRESHNESS_ERROR_HOURS = 48, 168  # same as dbt source freshness (tested)
 DPD_ORDER = ["1-30", "31-60", "61-89", "90+"]
 
 
@@ -65,16 +64,16 @@ def engineering_tab() -> None:
     c.metric("Dates loaded", f"{int(fresh.at[0, 'dates_loaded']):,}")
     d.metric("Loads (incl. reloads)", f"{int(fresh.at[0, 'loads']):,}")
 
+    # Budgets and over-budget flags come from dq_ingestion_daily (dbt vars), never re-derived here.
+    warn_pct, error_pct = quality["quarantine_budget_warn_pct"].max(), quality["quarantine_budget_error_pct"].max()
     st.subheader("Quarantine rate, rolling 7 loaded dates")
     fig = px.line(quality, x="reference_date", y="quarantine_pct_7d", color="entity", labels={"quarantine_pct_7d": "%"})
-    fig.add_hline(y=DQ_QUARANTINE_WARN_PCT, line_dash="dot", annotation_text="warn")
-    fig.add_hline(y=DQ_QUARANTINE_ERROR_PCT, line_dash="dash", annotation_text="error")
+    fig.add_hline(y=warn_pct, line_dash="dot", annotation_text="warn")
+    fig.add_hline(y=error_pct, line_dash="dash", annotation_text="error")
     st.plotly_chart(fig, width="stretch")
-    full = quality[quality["dates_in_window_7d"] == 7]  # same rule as the dbt budget test
-    over = full[full["quarantine_pct_7d"] > DQ_QUARANTINE_WARN_PCT]
     st.caption(
-        f"{len(over)} entity-dates above the {DQ_QUARANTINE_WARN_PCT}% warning budget "
-        "(evaluated once the window holds 7 loaded dates)."
+        f"Entity-dates over budget: {int(quality['is_over_warn_budget'].sum())} above the {warn_pct:g}% warning "
+        f"budget, {int(quality['is_over_error_budget'].sum())} above the {error_pct:g}% error budget."
     )
 
     st.subheader("Rows loaded per reference date (latest load)")

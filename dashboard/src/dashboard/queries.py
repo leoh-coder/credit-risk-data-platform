@@ -23,7 +23,8 @@ QUERIES: dict[str, str] = {
     """,
     "ingestion_quality": """
         select reference_date, entity, rows_received, rows_quarantined, quarantine_pct, quarantine_pct_7d,
-               dates_in_window_7d
+               dates_in_window_7d, quarantine_budget_warn_pct, quarantine_budget_error_pct,
+               is_over_warn_budget, is_over_error_budget
         from marts.dq_ingestion_daily
         order by reference_date, entity
     """,
