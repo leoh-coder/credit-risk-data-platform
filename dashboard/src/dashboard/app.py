@@ -224,13 +224,18 @@ def risk_tab() -> None:
     )
 
     st.subheader("Model performance (out of time)")
-    periods = ("train", "validation", "test")
+    periods, metric_names = ("train", "validation", "test"), ("auc", "gini", "ks", "brier")
     rows = []
     for name, model_metrics in artifacts.metrics["models"].items():
         for period in periods:
             m = model_metrics[period]
-            rows.append({"model": name, "period": period, **{k: m[k] for k in ("auc", "gini", "ks", "brier")}})
-    st.dataframe(pd.DataFrame(rows).round(3), hide_index=True, width="stretch")
+            rows.append({"model": name, "period": period, **{k: m[k] for k in metric_names}})
+    st.dataframe(
+        pd.DataFrame(rows),
+        column_config={k: st.column_config.NumberColumn(format="%.3f") for k in metric_names},
+        hide_index=True,
+        width="stretch",
+    )
     split = artifacts.metrics["split"]
     st.caption(
         ", ".join(

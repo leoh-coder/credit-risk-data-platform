@@ -178,3 +178,10 @@ def test_cohort_default_rate_shows_only_fully_mature_product_cohorts(app):
     assert "2025-09" not in months["personal_loan"]  # 10 of its personal loans are not mature yet
     assert "2025-08" not in months["payroll_loan"]  # nothing labeled
     assert any("every contract is mature" in c.value for c in app.caption)
+
+
+def test_model_metrics_are_shown_with_three_decimals(app):
+    app.run()
+    columns = json.loads(app.dataframe[0].proto.columns)
+    for name in ("auc", "gini", "ks", "brier"):
+        assert columns[name]["type_config"]["format"] == "%.3f"  # 0.830, not 0.83
