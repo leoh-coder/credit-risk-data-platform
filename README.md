@@ -157,8 +157,10 @@ refit on train + validation and scored once on the test period.
 | HistGradientBoosting (depth 2, leaf 200) | 0.837 | 0.832 | 0.825 | 0.650 | 0.509 | 0.0823 | 0.110 vs. 0.116 |
 
 On the test period the largest gap between predicted and observed default rate across PD deciles
-is 0.036 for the logistic model and 0.044 for the boosting model. The logistic model stays the main
-one: slightly better discrimination and calibration, and an exact explanation per applicant.
+is 0.036 for the logistic model and 0.044 for the boosting model. The logistic model was chosen in
+advance for interpretability (odds ratios and an exact explanation per applicant). The boosting model
+is marginally ahead on validation and marginally behind on test; the difference is within noise and
+does not pay for the loss of auditability.
 
 ## Running locally
 

@@ -111,8 +111,8 @@ chosen otherwise, the entry also names that alternative and why it was not taken
 - **Rejected:** using the contract rate as a feature because it is known at the grant date.
 
 ### D24. Logistic regression as the main model, one comparison model
-- **Why:** the standard in credit scoring: odds ratios and an exact per-applicant decomposition of the log-odds. Both models are tuned on the validation period (logistic C in {0.1, 1, 10}; boosting depth/leaf in {2/200, 3/100, 4/50}). Out of time the logistic model (test AUC 0.828, KS 0.519) slightly beats the boosting model (0.825, KS 0.509), with better calibration (largest decile gap 0.036 vs 0.044) and a smaller train/test gap.
-- **Rejected:** shipping the boosting model, which gains nothing here and is harder to audit.
+- **Why:** chosen in advance for interpretability, the standard in credit scoring: odds ratios and an exact per-applicant decomposition of the log-odds. Both models are tuned on the validation period (logistic C in {0.1, 1, 10}; boosting depth/leaf in {2/200, 3/100, 4/50}). On validation the boosting model is marginally ahead (AUC 0.832 vs 0.830, KS 0.519 vs 0.500) and on test marginally behind (AUC 0.825 vs 0.828); the difference is within noise and does not pay for the loss of auditability.
+- **Rejected:** shipping the boosting model, which is harder to audit for no measurable gain.
 
 ### D25. Explicit reference categories in the one-hot encoding
 - **Why:** with every level one-hot encoded next to an intercept, category coefficients are not identifiable on their own (L2 only centres them), so an odds ratio per category would mean nothing precise. Each categorical feature drops a declared reference level, `product_type = personal_loan` (largest and riskiest product) and `employment_type = clt` (most common), and its odds ratios read "vs. the reference category". A reference applicant's categorical contribution is exactly zero.
