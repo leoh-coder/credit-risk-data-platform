@@ -124,7 +124,7 @@ chosen otherwise, the entry also names that alternative and why it was not taken
 ## Consumption
 
 ### D27. Read-only login roles per consumer
-- **Why:** `ml_reader` and `dashboard_reader` inherit only `analytics_reader`, which has SELECT on `marts` only; those grants are the protection. Their sessions also default to read-only (`default_transaction_read_only`), an extra guard that the session itself can turn off. Passwords come from `.env`, and the model and dashboard containers never receive the admin credentials.
+- **Why:** `ml_reader` and `dashboard_reader` inherit only `analytics_reader`, which has SELECT on `marts` only; those grants are the protection. Their sessions also default to read-only (`default_transaction_read_only`), an extra guard that the session itself can turn off. Passwords come from `.env`, and the model and dashboard containers never receive the admin credentials. The jobs are not least-privilege in this demo: the loader and dbt connect as the Postgres superuser; in production they would use a pipeline role without superuser rights, and the loader a read-only key for the lake.
 
 ### D28. The dashboard reads marts only
 - **Why:** pipeline health is exposed through `dq_pipeline_loads` and `dq_ingestion_daily`, so the dashboard never reads `audit`, `raw` or staging; a test fails if a dashboard query references anything outside `marts`.

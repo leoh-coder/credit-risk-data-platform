@@ -17,7 +17,10 @@ What is still Postgres-specific, and the usual Amazon Redshift equivalent:
 | `age()` with `date_part('year', ...)` | `dim_customers` (age at registration) | `DATEDIFF(year, ...)` plus a birthday adjustment (no `AGE`) |
 | `extract(isodow ...)` | `dim_date` | `DATE_PART(dow, ...)` (Sunday = 0), remapped to ISO |
 | Regex class `\D` in `regexp_replace` | `stg_core_banking__customers` | An explicit class such as `[^0-9]` |
+| `interval '...'` literals in date arithmetic | `int_customers__open_finance_features` (history window), `dim_date` (calendar end bound, month end) | `dbt.dateadd`, as the other models already use, or `DATEADD` |
 | Enforced `PRIMARY KEY` from dbt contracts | every mart | Redshift enforces `NOT NULL` only; primary keys are informational, so the dbt `unique` tests remain the real guard |
+| `text` columns in the mart contracts (`data_type: text`) | every mart | Redshift stores `TEXT` as `VARCHAR(256)`: declare explicit `VARCHAR` lengths |
+| `uuid` type and `CREATE INDEX` in the loader DDL | `audit.lake_loads.load_id`, `raw.<entity>(_reference_date)` | `CHAR(36)` for the id; no indexes on Redshift, a sort key on `_reference_date` instead |
 | `DO $$ ... $$` block, `NOLOGIN` role | `infra/postgres/init.sql` | No anonymous blocks: plain `CREATE ROLE` / groups and a stored procedure if needed |
 | psql meta-commands (`\getenv`, `\gexec`, `\if`) | `infra/postgres/roles.sql` | Plain `CREATE USER ... PASSWORD` and `GRANT ROLE` run by the deployment tool |
 | Loading through DuckDB's `postgres` extension (wire protocol) | `loader/` | `COPY` from the Parquet files already in S3; row inserts do not scale on Redshift |
