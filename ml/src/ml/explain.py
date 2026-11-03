@@ -8,6 +8,7 @@ from sklearn.inspection import permutation_importance
 from sklearn.pipeline import Pipeline
 
 from ml.features import CATEGORICAL_FEATURES, FEATURES
+from ml.model import RANDOM_STATE
 
 
 def _original_feature(transformed_name: str) -> str:
@@ -49,7 +50,7 @@ def contributions(pipeline: Pipeline, row: pd.DataFrame) -> pd.Series:
 def permutation_importances(pipeline: Pipeline, X: pd.DataFrame, y, n_repeats: int = 10) -> pd.DataFrame:
     """AUC drop when one raw feature is shuffled."""
     result = permutation_importance(
-        pipeline, X[list(FEATURES)], y, scoring="roc_auc", n_repeats=n_repeats, random_state=42
+        pipeline, X[list(FEATURES)], y, scoring="roc_auc", n_repeats=n_repeats, random_state=RANDOM_STATE
     )
     return pd.DataFrame(
         {

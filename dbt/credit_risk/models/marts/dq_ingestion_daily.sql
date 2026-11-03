@@ -2,7 +2,11 @@
     Ingestion quality per reference_date x entity, from the latest load of each date (quarantined rows
     stay in the lake; only their counts reach audit.lake_loads). The 7-date window rate is
     sum(quarantined) / sum(received), so small days weigh less; ROWS counts loaded dates, not calendar days.
+    The quarantine budget is evaluated here, once the window holds 7 loaded dates; the dbt budget tests
+    and the dashboard read the flags.
 -#}
+{%- set warn_pct = var('dq_quarantine_warn_pct') %}
+{%- set error_pct = var('dq_quarantine_error_pct') %}
 
 with ranked_loads as (
 
@@ -49,6 +53,15 @@ rolling as (
         )                                               as dates_in_window_7d
     from per_entity
 
+),
+
+rates as (
+
+    select
+        *,
+        (100.0 * rows_quarantined_7d / nullif(rows_received_7d, 0))::numeric(6, 2) as quarantine_pct_7d
+    from rolling
+
 )
 
 select
@@ -63,8 +76,12 @@ select
     rows_received_7d::int                                                           as rows_received_7d,
     rows_quarantined_7d::int                                                        as rows_quarantined_7d,
     dates_in_window_7d::int                                                         as dates_in_window_7d,
-    (100.0 * rows_quarantined_7d / nullif(rows_received_7d, 0))::numeric(6, 2)     as quarantine_pct_7d,
+    quarantine_pct_7d,
     batch_id,
     contract_version,
-    loaded_at
-from rolling
+    loaded_at,
+    {{ warn_pct }}::numeric(6, 2)                                                   as quarantine_budget_warn_pct,
+    {{ error_pct }}::numeric(6, 2)                                                  as quarantine_budget_error_pct,
+    coalesce(dates_in_window_7d = 7 and quarantine_pct_7d > {{ warn_pct }}, false)  as is_over_warn_budget,
+    coalesce(dates_in_window_7d = 7 and quarantine_pct_7d > {{ error_pct }}, false) as is_over_error_budget
+from rates

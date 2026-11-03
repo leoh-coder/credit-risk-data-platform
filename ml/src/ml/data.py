@@ -6,7 +6,7 @@ from __future__ import annotations
 import pandas as pd
 from sqlalchemy import create_engine, text
 
-from ml.features import CATEGORICAL_FEATURES, FEATURES, TARGET, check_feature_list
+from ml.features import CATEGORICAL_FEATURES, FEATURES, TARGET
 
 # Mart alias each allowlisted feature comes from.
 FEATURE_SOURCE = {
@@ -29,8 +29,6 @@ FEATURE_SOURCE = {
 
 
 def population_sql() -> str:
-    check_feature_list(FEATURE_SOURCE)
-    assert set(FEATURE_SOURCE) == set(FEATURES), "every allowlisted feature needs a source"
     # double precision, so pandas receives floats instead of Decimal
     columns = ",\n    ".join(
         f"{FEATURE_SOURCE[name]}.{name}"

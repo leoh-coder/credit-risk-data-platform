@@ -18,7 +18,7 @@ def evaluate(y_true, pd_hat) -> dict[str, float]:
     pd_hat = np.asarray(pd_hat)
     auc = float(roc_auc_score(y_true, pd_hat))
     return {
-        "n": int(len(y_true)),
+        "n": len(y_true),
         "defaults": int(y_true.sum()),
         "auc": auc,
         "gini": 2 * auc - 1,

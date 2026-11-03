@@ -11,7 +11,7 @@ from sqlalchemy.engine import URL
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    postgres_host: str = "localhost"
+    postgres_host: str = "127.0.0.1"
     postgres_port: int = 5432
     postgres_db: str = "credit_risk_dw"
     dashboard_reader_user: str = "dashboard_reader"

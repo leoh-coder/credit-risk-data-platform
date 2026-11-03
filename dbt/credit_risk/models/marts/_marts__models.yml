@@ -1,6 +1,7 @@
 version: 2
 
 # Gold interface. Contracts are enforced: a mart must produce exactly these columns, types and constraints.
+# Postgres enforces each primary key (no NULL, no duplicate); `unique` stays for Redshift, which does not.
 
 models:
   - name: dim_customers
@@ -17,7 +18,7 @@ models:
         description: "{{ doc('surrogate_key') }}"
         data_type: text
         constraints: [{type: primary_key}]
-        data_tests: [unique, not_null]
+        data_tests: [unique]
       - name: customer_id
         description: Natural key from the KYC system ('UNKNOWN' for the unknown member).
         data_type: text
@@ -87,7 +88,7 @@ models:
         description: "{{ doc('surrogate_key') }}"
         data_type: text
         constraints: [{type: primary_key}]
-        data_tests: [unique, not_null]
+        data_tests: [unique]
       - name: product_type
         data_type: text
         constraints: [{type: not_null}]
@@ -113,7 +114,7 @@ models:
         description: "{{ doc('date_key') }}"
         data_type: integer
         constraints: [{type: primary_key}]
-        data_tests: [unique, not_null]
+        data_tests: [unique]
       - name: calendar_date
         data_type: date
         constraints: [{type: not_null}]
@@ -150,23 +151,25 @@ models:
       - dq_rate_within_budget:
           name: dq_budget_unknown_customer_warn
           arguments: {bad_rows: "customer_key = '-1'", max_pct: "{{ var('dq_unknown_customer_warn_pct') }}"}
-          config: {severity: warn}
+          config: {severity: warn, store_failures: true}
       - dq_rate_within_budget:
           name: dq_budget_unknown_customer_error
           arguments: {bad_rows: "customer_key = '-1'", max_pct: "{{ var('dq_unknown_customer_error_pct') }}"}
+          config: {store_failures: true}
       - dq_rate_within_budget:
           name: dq_budget_incomplete_window_warn
           arguments: {bad_rows: "not is_window_complete", max_pct: "{{ var('dq_incomplete_window_warn_pct') }}"}
-          config: {severity: warn}
+          config: {severity: warn, store_failures: true}
       - dq_rate_within_budget:
           name: dq_budget_incomplete_window_error
           arguments: {bad_rows: "not is_window_complete", max_pct: "{{ var('dq_incomplete_window_error_pct') }}"}
+          config: {store_failures: true}
     columns:
       - name: operation_id
         description: Natural key of the contract (degenerate dimension).
         data_type: text
         constraints: [{type: primary_key}]
-        data_tests: [unique, not_null]
+        data_tests: [unique]
       - name: customer_key
         description: "{{ doc('unknown_member') }}"
         data_type: text
@@ -265,20 +268,21 @@ models:
       - dbt_utils.expression_is_true:
           name: dq_ingestion_window_counts_add_up
           arguments: {expression: "rows_quarantined_7d <= rows_received_7d and dates_in_window_7d between 1 and 7"}
-      # Budget on the rolling 7-date rate, evaluated once the window holds 7 loaded dates.
+      # Budget on the rolling 7-date rate; the rule lives in the model (is_over_*_budget).
       - dbt_utils.expression_is_true:
           name: dq_budget_quarantine_warn
-          arguments: {expression: "dates_in_window_7d < 7 or quarantine_pct_7d <= {{ var('dq_quarantine_warn_pct') }}"}
-          config: {severity: warn}
+          arguments: {expression: "not is_over_warn_budget"}
+          config: {severity: warn, store_failures: true}
       - dbt_utils.expression_is_true:
           name: dq_budget_quarantine_error
-          arguments: {expression: "dates_in_window_7d < 7 or quarantine_pct_7d <= {{ var('dq_quarantine_error_pct') }}"}
+          arguments: {expression: "not is_over_error_budget"}
+          config: {store_failures: true}
     columns:
       - name: ingestion_quality_key
         description: "{{ doc('surrogate_key') }}"
         data_type: text
         constraints: [{type: primary_key}]
-        data_tests: [unique, not_null]
+        data_tests: [unique]
       - name: reference_date_key
         description: "{{ doc('date_key') }}"
         data_type: integer
@@ -330,6 +334,22 @@ models:
         data_type: text
       - name: loaded_at
         data_type: timestamp
+      - name: quarantine_budget_warn_pct
+        description: Warning budget for quarantine_pct_7d, in percent (var dq_quarantine_warn_pct).
+        data_type: numeric(6, 2)
+        constraints: [{type: not_null}]
+      - name: quarantine_budget_error_pct
+        description: Error budget for quarantine_pct_7d, in percent (var dq_quarantine_error_pct).
+        data_type: numeric(6, 2)
+        constraints: [{type: not_null}]
+      - name: is_over_warn_budget
+        description: The window holds 7 loaded dates and quarantine_pct_7d is above the warning budget.
+        data_type: boolean
+        constraints: [{type: not_null}]
+      - name: is_over_error_budget
+        description: The window holds 7 loaded dates and quarantine_pct_7d is above the error budget.
+        data_type: boolean
+        constraints: [{type: not_null}]
 
   - name: dq_pipeline_loads
     description: >
@@ -346,7 +366,7 @@ models:
       - name: load_id
         data_type: text
         constraints: [{type: primary_key}]
-        data_tests: [unique, not_null]
+        data_tests: [unique]
       - name: reference_date_key
         description: "{{ doc('date_key') }}"
         data_type: integer
@@ -394,7 +414,7 @@ models:
       - name: installment_id
         data_type: text
         constraints: [{type: primary_key}]
-        data_tests: [unique, not_null]
+        data_tests: [unique]
       - name: operation_id
         description: Degenerate dimension; may not exist in fct_credit_operations if the operation was quarantined.
         data_type: text
@@ -435,7 +455,7 @@ models:
         data_type: numeric(18, 2)
         constraints: [{type: not_null}]
       - name: amount_overdue
-        description: amount_due when the installment is due and unpaid, else 0.
+        description: amount_due when the installment is unpaid and past due (days_past_due > 0), else 0.
         data_type: numeric(18, 2)
         constraints: [{type: not_null}]
       - name: is_paid
@@ -458,8 +478,12 @@ unit_tests:
   - name: quarantine_budget_uses_latest_load_and_last_7_loaded_dates
     description: >
       Eight loaded dates of one entity (10 rows each). 2026-01-01 was loaded twice: the older load
-      (9 quarantined) must be ignored. The 8th window covers dates 2..8 only.
+      (9 quarantined) must be ignored. The 8th window covers dates 2..8 only. Budgets 10% (warn) and
+      12% (error) apply once the window holds 7 dates: dates 1..6 are at 10% on a partial window, date 7
+      sits exactly on the warn budget (not over), date 8 is over both.
     model: dq_ingestion_daily
+    overrides:
+      vars: {dq_quarantine_warn_pct: 10, dq_quarantine_error_pct: 12}
     given:
       - input: source('loader', 'lake_loads')
         rows:
@@ -474,14 +498,14 @@ unit_tests:
           - {reference_date: 2026-01-08, finished_at: 2026-10-02 00:00:00, manifest_entities: '{"customers": {"rows_received": 10, "rows_valid": 7, "rows_quarantined": 3}}'}
     expect:
       rows:
-        - {reference_date: 2026-01-01, rows_quarantined: 1, rows_received_7d: 10, rows_quarantined_7d: 1, dates_in_window_7d: 1, quarantine_pct_7d: 10.00}
-        - {reference_date: 2026-01-02, rows_quarantined: 1, rows_received_7d: 20, rows_quarantined_7d: 2, dates_in_window_7d: 2, quarantine_pct_7d: 10.00}
-        - {reference_date: 2026-01-03, rows_quarantined: 1, rows_received_7d: 30, rows_quarantined_7d: 3, dates_in_window_7d: 3, quarantine_pct_7d: 10.00}
-        - {reference_date: 2026-01-04, rows_quarantined: 1, rows_received_7d: 40, rows_quarantined_7d: 4, dates_in_window_7d: 4, quarantine_pct_7d: 10.00}
-        - {reference_date: 2026-01-05, rows_quarantined: 1, rows_received_7d: 50, rows_quarantined_7d: 5, dates_in_window_7d: 5, quarantine_pct_7d: 10.00}
-        - {reference_date: 2026-01-06, rows_quarantined: 1, rows_received_7d: 60, rows_quarantined_7d: 6, dates_in_window_7d: 6, quarantine_pct_7d: 10.00}
-        - {reference_date: 2026-01-07, rows_quarantined: 1, rows_received_7d: 70, rows_quarantined_7d: 7, dates_in_window_7d: 7, quarantine_pct_7d: 10.00}
-        - {reference_date: 2026-01-08, rows_quarantined: 3, rows_received_7d: 70, rows_quarantined_7d: 9, dates_in_window_7d: 7, quarantine_pct_7d: 12.86}
+        - {reference_date: 2026-01-01, rows_quarantined: 1, rows_received_7d: 10, rows_quarantined_7d: 1, dates_in_window_7d: 1, quarantine_pct_7d: 10.00, quarantine_budget_warn_pct: 10.00, quarantine_budget_error_pct: 12.00, is_over_warn_budget: false, is_over_error_budget: false}
+        - {reference_date: 2026-01-02, rows_quarantined: 1, rows_received_7d: 20, rows_quarantined_7d: 2, dates_in_window_7d: 2, quarantine_pct_7d: 10.00, quarantine_budget_warn_pct: 10.00, quarantine_budget_error_pct: 12.00, is_over_warn_budget: false, is_over_error_budget: false}
+        - {reference_date: 2026-01-03, rows_quarantined: 1, rows_received_7d: 30, rows_quarantined_7d: 3, dates_in_window_7d: 3, quarantine_pct_7d: 10.00, quarantine_budget_warn_pct: 10.00, quarantine_budget_error_pct: 12.00, is_over_warn_budget: false, is_over_error_budget: false}
+        - {reference_date: 2026-01-04, rows_quarantined: 1, rows_received_7d: 40, rows_quarantined_7d: 4, dates_in_window_7d: 4, quarantine_pct_7d: 10.00, quarantine_budget_warn_pct: 10.00, quarantine_budget_error_pct: 12.00, is_over_warn_budget: false, is_over_error_budget: false}
+        - {reference_date: 2026-01-05, rows_quarantined: 1, rows_received_7d: 50, rows_quarantined_7d: 5, dates_in_window_7d: 5, quarantine_pct_7d: 10.00, quarantine_budget_warn_pct: 10.00, quarantine_budget_error_pct: 12.00, is_over_warn_budget: false, is_over_error_budget: false}
+        - {reference_date: 2026-01-06, rows_quarantined: 1, rows_received_7d: 60, rows_quarantined_7d: 6, dates_in_window_7d: 6, quarantine_pct_7d: 10.00, quarantine_budget_warn_pct: 10.00, quarantine_budget_error_pct: 12.00, is_over_warn_budget: false, is_over_error_budget: false}
+        - {reference_date: 2026-01-07, rows_quarantined: 1, rows_received_7d: 70, rows_quarantined_7d: 7, dates_in_window_7d: 7, quarantine_pct_7d: 10.00, quarantine_budget_warn_pct: 10.00, quarantine_budget_error_pct: 12.00, is_over_warn_budget: false, is_over_error_budget: false}
+        - {reference_date: 2026-01-08, rows_quarantined: 3, rows_received_7d: 70, rows_quarantined_7d: 9, dates_in_window_7d: 7, quarantine_pct_7d: 12.86, quarantine_budget_warn_pct: 10.00, quarantine_budget_error_pct: 12.00, is_over_warn_budget: true, is_over_error_budget: true}
 
   - name: reference_affordability_ignores_the_contract_rate
     description: >
@@ -516,3 +540,32 @@ unit_tests:
         - {operation_id: expensive_rate,   reference_installment_to_income_ratio: 0.2009}
         - {operation_id: longer_term,      reference_installment_to_income_ratio: 0.1181}
         - {operation_id: unknown_customer, reference_installment_to_income_ratio: null}
+
+  - name: installment_is_overdue_only_after_its_due_date
+    description: >
+      Observation 2026-10-15. An unpaid installment due that same day has 0 days past due (bucket current),
+      so nothing is overdue yet; one day later its amount is overdue. Paid and not-yet-due installments
+      are never overdue.
+    model: fct_installments
+    given:
+      - input: ref('int_installments__delinquency')
+        rows:
+          - {installment_id: due_today,  operation_id: o1, amount_due: 100, amount_paid: 0,   is_paid: false, is_due: true,  days_past_due: 0, dpd_bucket: current}
+          - {installment_id: one_day,    operation_id: o1, amount_due: 100, amount_paid: 0,   is_paid: false, is_due: true,  days_past_due: 1, dpd_bucket: 1-30}
+          - {installment_id: paid_late,  operation_id: o1, amount_due: 100, amount_paid: 100, is_paid: true,  is_due: true,  days_past_due: 4, dpd_bucket: 1-30}
+          - {installment_id: not_due,    operation_id: o1, amount_due: 100, amount_paid: 0,   is_paid: false, is_due: false, days_past_due: 0, dpd_bucket: current}
+      - input: ref('stg_core_banking__credit_operations')
+        rows:
+          - {operation_id: o1, customer_id: C1, product_type: personal_loan}
+      - input: ref('dim_customers')
+        rows:
+          - {customer_key: k1, customer_id: C1, is_unknown_member: false}
+      - input: ref('dim_products')
+        rows:
+          - {product_key: p1, product_type: personal_loan, is_unknown_member: false}
+    expect:
+      rows:
+        - {installment_id: due_today, amount_overdue: 0}
+        - {installment_id: one_day,   amount_overdue: 100}
+        - {installment_id: paid_late, amount_overdue: 0}
+        - {installment_id: not_due,   amount_overdue: 0}

@@ -43,6 +43,7 @@ def test_outcome_columns_are_all_forbidden():
 def test_allowlist_and_forbidden_list_do_not_overlap():
     assert not set(FEATURES) & FORBIDDEN_COLUMNS
     assert TARGET not in FEATURES
+    check_feature_list(FEATURES)  # the allowlist itself passes the leakage check
 
 
 def test_allowlist_is_partitioned_into_numeric_and_categorical():
@@ -64,11 +65,6 @@ def test_deliberately_excluded_columns_never_enter_the_model(column):
     assert column not in FEATURES
     with pytest.raises(LeakageError, match="not in the allowlist"):
         check_feature_list([*FEATURES, column])
-
-
-def test_columns_outside_the_allowlist_raise_even_if_harmless_looking():
-    with pytest.raises(LeakageError, match="not in the allowlist"):
-        check_feature_list([*FEATURES, "interest_rate_monthly"])  # excluded on purpose
 
 
 def test_feature_matrix_keeps_exactly_the_allowlist_and_drops_everything_else():

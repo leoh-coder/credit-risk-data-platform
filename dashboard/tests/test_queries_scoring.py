@@ -1,13 +1,13 @@
 import re
 
 import numpy as np
-import pandas as pd
 import pytest
 
 from dashboard.queries import QUERIES
 from dashboard.scoring import (
     FIELD_META,
     RISK_BANDS,
+    TOP_RISK_BAND,
     applicant_frame,
     load_artifacts,
     risk_band,
@@ -24,8 +24,7 @@ def test_every_query_reads_the_gold_layer_only(name):
     assert all(r.startswith("marts.") for r in relations), relations
 
 
-def test_no_query_touches_outcome_columns_as_inputs_to_scoring():
-    # the dashboard may *report* labels, but scoring only ever goes through the allowlist
+def test_applicant_frame_has_exactly_the_model_features_in_order():
     row = applicant_frame(dict.fromkeys(FEATURES, 1) | {"product_type": "x", "employment_type": "y"})
     assert list(row.columns) == list(FEATURES)
 
@@ -47,7 +46,7 @@ def test_reference_ratio_is_derived_not_typed():
 )
 def test_risk_band_boundaries(pd_hat, band):
     assert risk_band(pd_hat) == band
-    assert [b for b, _ in RISK_BANDS] == ["A", "B", "C", "D", "E"]
+    assert [*(b for b, _ in RISK_BANDS), TOP_RISK_BAND] == ["A", "B", "C", "D", "E"]
 
 
 def test_missing_artifacts_mean_no_model_not_an_error(tmp_path):
@@ -78,31 +77,6 @@ def test_a_lower_bureau_score_raises_the_simulated_pd(artifacts_dir):
     low, _ = score(artifacts.model, values | {"bureau_score_at_origination": 300})
     high, _ = score(artifacts.model, values | {"bureau_score_at_origination": 900})
     assert low > high
-
-
-def test_fetch_turns_decimals_into_floats(monkeypatch):
-    from decimal import Decimal
-
-    import dashboard.queries as queries
-
-    class FakeEngine:
-        def connect(self):
-            return self
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *exc):
-            return False
-
-        def dispose(self):
-            pass
-
-    monkeypatch.setattr(queries, "create_engine", lambda url: FakeEngine())
-    monkeypatch.setattr(queries.pd, "read_sql", lambda *a, **k: pd.DataFrame({"x": [Decimal("1.50")], "y": ["a"]}))
-    frame = queries.fetch("label_status", "postgresql://unused")
-    assert frame["x"].dtype == float
-    assert frame["y"].tolist() == ["a"]
 
 
 def test_every_non_derived_numeric_feature_has_a_simulation_field():

@@ -1,4 +1,5 @@
 import json
+from datetime import date, datetime
 from pathlib import Path
 
 import pyarrow.dataset as ds
@@ -85,3 +86,30 @@ def test_rejected_rerun_keeps_previous_commit(settings, monkeypatch):
     customers = _lake(settings) / "raw" / "customers" / f"reference_date={REFERENCE_DATE}"
     expected_rows = first["entities"]["customers"]["rows_valid"]
     assert ds.dataset(customers, format="parquet").count_rows() == expected_rows
+
+
+def test_default_dates_follow_the_utc_calendar(monkeypatch, tmp_path):
+    # 22:00 in UTC-3: the local calendar still shows January 1st, UTC is already on January 2nd.
+    class LocalDate(date):
+        @classmethod
+        def today(cls):
+            return date(2026, 1, 1)
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 1, 2, 1, 0, tzinfo=tz)
+
+    landed = []
+    monkeypatch.setattr(main, "date", LocalDate)
+    monkeypatch.setattr(main, "datetime", Clock)
+    monkeypatch.setattr(main, "run_batch", lambda day, as_of, *_: landed.append((day, as_of)))
+    monkeypatch.setenv("STORAGE_BACKEND", "local")
+    monkeypatch.setenv("LAKE_LOCAL_PATH", str(tmp_path))
+    main.get_settings.cache_clear()
+    try:
+        assert main.main(["run"]) == 0
+    finally:
+        main.get_settings.cache_clear()
+
+    assert landed == [(date(2026, 1, 2), date(2026, 1, 2))]

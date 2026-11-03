@@ -33,8 +33,8 @@ vars:
 
 data_tests:
   credit_risk:
-    # Keep the offending rows of every failing test, queryable in the audit schema.
-    +store_failures: true
+    # Only the data-quality budget tests set store_failures; their offending rows land in this schema.
+    # Not global: a failing no_pii_patterns test would copy the PII it found into audit.
     +schema: audit
 
 models:

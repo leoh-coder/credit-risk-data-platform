@@ -4,7 +4,7 @@
     python -m ingestion.main run --date 2026-10-01
     python -m ingestion.main backfill --start 2025-10-01 --end 2026-10-14
 
-`--as-of` freezes the observation clock (default: today) so reruns are reproducible.
+`--as-of` freezes the observation clock (default: today in UTC) so reruns are reproducible.
 """
 
 from __future__ import annotations
@@ -77,9 +77,10 @@ def main(argv: list[str] | None = None) -> int:
         prog="ingestion", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     sub = parser.add_subparsers(dest="command", required=True)
+    today = datetime.now(UTC).date()  # the project's clock is naive UTC, not the machine's local time
 
     run_p = sub.add_parser("run", help="generate, validate and land one daily batch")
-    run_p.add_argument("--date", type=_parse_date, default=date.today())
+    run_p.add_argument("--date", type=_parse_date, default=today)
     run_p.add_argument("--as-of", type=_parse_date, default=None)
 
     bf_p = sub.add_parser("backfill", help="land one batch per day in [start, end]")
@@ -100,7 +101,7 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("--end must be on or after --start")
         dates = [args.start + timedelta(days=i) for i in range((args.end - args.start).days + 1)]
 
-    as_of = args.as_of or max(date.today(), dates[-1])
+    as_of = args.as_of or max(today, dates[-1])
     logger.info(
         "landing %d batch(es) into %s (backend=%s, as_of=%s)",
         len(dates),

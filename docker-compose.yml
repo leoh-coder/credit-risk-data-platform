@@ -5,7 +5,7 @@
 #   docker compose run --rm loader run           -> loads committed lake dates into Postgres raw
 #   docker compose run --rm dbt build            -> staging -> intermediate -> marts, with tests
 #   docker compose run --rm ml                   -> trains the PD model (artifacts in the ml-artifacts volume)
-#   docker compose --profile app up dashboard    -> Streamlit at http://localhost:8501
+#   docker compose --profile app up dashboard    -> Streamlit at http://127.0.0.1:8501
 #
 # Jobs (ingestion, loader, dbt, ml) live under the "jobs" profile:
 # they run to completion and exit, they are not long-running services.
@@ -44,8 +44,8 @@ services:
         exec weed server -dir=/data -s3 -s3.port=8333 -s3.config=/tmp/s3.json
         -master.volumeSizeLimitMB=1024
     ports:
-      - "8333:8333"   # S3 API
-      - "8888:8888"   # Filer UI: browse the lake at http://localhost:8888/buckets/
+      - "127.0.0.1:8333:8333"   # S3 API
+      - "127.0.0.1:8888:8888"   # Filer UI: browse the lake at http://127.0.0.1:8888/buckets/
     volumes:
       - seaweedfs-data:/data
     healthcheck:
@@ -67,7 +67,7 @@ services:
       ML_READER_PASSWORD: ${ML_READER_PASSWORD:?set ML_READER_PASSWORD in .env}
       DASHBOARD_READER_PASSWORD: ${DASHBOARD_READER_PASSWORD:?set DASHBOARD_READER_PASSWORD in .env}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
@@ -86,7 +86,7 @@ services:
     environment:
       <<: *lake-env
       SEED: ${SEED:-42}
-      CUSTOMERS_PER_BATCH: ${CUSTOMERS_PER_BATCH:-150}
+      CUSTOMERS_PER_BATCH: ${CUSTOMERS_PER_BATCH:-30}
       DIRTY_RATE: ${DIRTY_RATE:-0.01}
     depends_on:
       seaweedfs:
@@ -117,7 +117,7 @@ services:
       postgres:
         condition: service_healthy
 
-  # dbt docs site (lineage graph, column docs, tests) at http://localhost:8080 - `make docs`.
+  # dbt docs site (lineage graph, column docs, tests) at http://127.0.0.1:8080 - `make docs`.
   dbt-docs:
     image: credit-risk-data-platform/dbt:latest
     build: ./dbt
@@ -128,7 +128,7 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command: ["dbt docs generate && exec dbt docs serve --host 0.0.0.0 --port 8080 --no-browser"]
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -149,7 +149,7 @@ services:
       postgres:
         condition: service_healthy
 
-  # Streamlit at http://localhost:8501 (`make dashboard`), as dashboard_reader.
+  # Streamlit at http://127.0.0.1:8501 (`make dashboard`), as dashboard_reader.
   dashboard:
     build:
       context: ./dashboard
@@ -165,7 +165,7 @@ services:
     volumes:
       - ml-artifacts:/artifacts:ro
     ports:
-      - "8501:8501"
+      - "127.0.0.1:8501:8501"
     depends_on:
       postgres:
         condition: service_healthy

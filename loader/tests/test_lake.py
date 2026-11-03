@@ -3,9 +3,9 @@ import hashlib
 import duckdb
 import pytest
 
-from loader.lake import Lake
-from loader.sql import quote_literal, safe_identifier
-from tests.conftest import BUCKET, DAY_1, DAY_2, manifest_file
+from loader.lake import ENTITIES, Lake, LoadError
+from loader.sql import quote_literal
+from tests.conftest import BUCKET, DAY_1, DAY_2, edit_manifest, manifest_file
 
 
 @pytest.fixture
@@ -35,9 +35,32 @@ def test_read_manifest_of_uncommitted_date_is_none(lake, lake_path):
     assert lake.read_manifest(DAY_2) is None
 
 
-def test_lake_names_are_allow_listed_before_reaching_sql():
-    assert safe_identifier("credit_operations") == "credit_operations"
-    for hostile in ["customers; DROP TABLE raw.customers", "Customers", "raw.customers", "", "a" * 64]:
-        with pytest.raises(ValueError):
-            safe_identifier(hostile)
+def test_manifest_entities_must_be_exactly_the_allow_listed_ones(lake, lake_path):
+    assert set(lake.read_manifest(DAY_1).entities) == set(ENTITIES)
+
+    edit_manifest(lake_path, DAY_1, lambda m: m["entities"].update(accounts=m["entities"]["customers"]))
+    with pytest.raises(LoadError, match="entities"):
+        lake.read_manifest(DAY_1)
+
+    edit_manifest(lake_path, DAY_2, lambda m: m["entities"].pop("installments"))
+    with pytest.raises(LoadError, match="entities"):
+        lake.read_manifest(DAY_2)
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "{not json",
+        "[]",
+        '{"batch_id": "b", "contract_version": "1"}',
+        '{"batch_id": "b", "contract_version": "1", "entities": {"customers": {"rows_valid": "10"}}}',
+    ],
+)
+def test_malformed_manifest_raises_a_load_error(lake, lake_path, content):
+    manifest_file(lake_path, DAY_1).write_text(content)
+    with pytest.raises(LoadError):
+        lake.read_manifest(DAY_1)
+
+
+def test_literals_are_quoted_for_duckdb():
     assert quote_literal("it's") == "'it''s'"

@@ -8,6 +8,7 @@ Artifacts: model.joblib (final logistic pipeline), metrics.json, coefficients.cs
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import sys
@@ -44,7 +45,7 @@ def _period(frame: pd.DataFrame) -> dict:
 
 
 def evaluate_counts(frame: pd.DataFrame) -> dict:
-    return {"rows": int(len(frame)), "defaults": int(frame[TARGET].sum())}
+    return {"rows": len(frame), "defaults": int(frame[TARGET].sum())}
 
 
 # Candidates are compared on the validation period only; the test period is scored once, at the end.
@@ -103,7 +104,7 @@ def train(
             "validation": evaluate(y_validation, selected.predict_proba(X_validation)[:, 1]),
             "test": evaluate(y_test, pd_test),
             "test_max_decile_gap": _max_decile_gap(y_test, pd_test),
-            "final_fit_rows": int(len(X_final)),
+            "final_fit_rows": len(X_final),
         }
 
     selected_logistic, logistic, pd_test = fitted["logistic_regression"]
@@ -237,6 +238,10 @@ bank's risk-based price; affordability uses the installment at a fixed reference
 
 
 def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="ml.train", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s | %(message)s")
     settings = get_settings()
     population = load_population(settings.database_url)

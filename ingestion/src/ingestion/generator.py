@@ -164,7 +164,7 @@ def generate_batch(
     reference_date: date,
     as_of: date,
     seed: int = 42,
-    customers_per_batch: int = 150,
+    customers_per_batch: int = 30,
     history_days: int = 90,
 ) -> dict[str, pd.DataFrame]:
     if as_of < reference_date:

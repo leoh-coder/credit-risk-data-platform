@@ -113,7 +113,7 @@ contracts only.
   keeps that for monitoring), so gaps cannot over-represent defaults.
 - Orphans from row-level quarantine point to a `'-1'` unknown member, so facts reconcile with
   `raw`.
-- Data quality (`dbt build`: 130 nodes, 0 warnings on the full history):
+- Data quality (`dbt build`: 124 nodes, 0 warnings on the full history):
   - enforced model contracts on every mart;
   - domains, ranges, row invariants and composite keys;
   - singular tests reconciling lake → `raw` → facts, checking schedules against contracts, and
@@ -126,9 +126,9 @@ contracts only.
     | Unknown customer | 2% | 5% |
     | Incomplete label window | 15% | 30% |
     | Quarantine per entity, rolling 7 loaded dates | 5% | 10% |
-  - failing rows stored in `audit`, source freshness on `_loaded_at`, and 4 dbt unit tests
+  - failing rows of the budget tests stored in `audit`, source freshness on `_loaded_at`, and 5 dbt unit tests
     (DPD and censoring branches, maturity boundaries, rolling quarantine window, reference-rate
-    affordability).
+    affordability, overdue amount).
 
 ### PD model (`ml/`)
 
@@ -222,7 +222,7 @@ optional (the equivalent `docker compose` command is shown next to each target).
 ```bash
 cp .env.example .env                              # then change the secrets
 make up                                           # docker compose up -d --wait
-CUSTOMERS_PER_BATCH=30 make backfill START=2024-07-01 END=2026-10-15 AS_OF=2026-10-15
+make backfill                                     # 2024-07-01..2026-10-15, as of 2026-10-15
 make load                                         # docker compose run --rm --build loader run
 make transform                                    # docker compose run --rm --build dbt build
 make train                                        # docker compose run --rm --build ml
@@ -231,16 +231,15 @@ make dashboard                                    # docker compose --profile app
 
 | Service | Address |
 |---|---|
-| Dashboard | http://localhost:8501 |
-| dbt docs (`make docs`) | http://localhost:8080 |
-| SeaweedFS S3 API | `http://localhost:8333` |
-| SeaweedFS filer UI | http://localhost:8888/buckets/ |
-| PostgreSQL | `localhost:5432`, database `credit_risk_dw` |
+| Dashboard | http://127.0.0.1:8501 |
+| dbt docs (`make docs`) | http://127.0.0.1:8080 |
+| SeaweedFS S3 API | `http://127.0.0.1:8333` |
+| SeaweedFS filer UI | http://127.0.0.1:8888/buckets/ |
+| PostgreSQL | `127.0.0.1:5432`, database `credit_risk_dw` |
 
 The full backfill takes about 40 minutes on an HDD. A short range (for example a week) is
 enough for everything except training, because the model needs mature cohorts.
 
-- `make backfill` without `CUSTOMERS_PER_BATCH` uses the `.env` value (150).
 - `make load` is incremental: a second run reports `0 loaded, N already up to date`.
 - `make freshness` checks the freshness of `raw`.
 - `make roles` adds the login roles to a volume created before they existed.
@@ -250,6 +249,7 @@ enough for everything except training, because the model needs mature cohorts.
   ```bash
   PYTHONPATH=ingestion/src python -m ingestion.main backfill --start 2026-01-01 --end 2026-01-02 --as-of 2026-10-15
   ```
+- Outside Docker against SeaweedFS, set `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (Compose translates `LAKE_ACCESS_KEY` / `LAKE_SECRET_KEY` only for the containers); `.env.example` lists the other optional settings.
 
 ## Tests
 
@@ -261,11 +261,11 @@ make test lint
 
 | Package | Tests | Notes |
 |---|---|---|
-| `ingestion` | 26 | Includes the S3 code path against a moto emulator |
-| `loader` | 15 | Real Postgres, with a throwaway database per test (skipped locally if unreachable; fails in CI) |
-| `ml` | 72 | Allowlist and leakage, split limits, metrics on hand-computed cases, exact contributions, artifacts |
-| `dashboard` | 31 | Marts-only queries, scoring, and the whole app run headless with `AppTest` |
-| dbt | 130 nodes | Run by `make transform` |
+| `ingestion` | 28 | Includes the S3 code path against a moto emulator |
+| `loader` | 23 | Real Postgres, with a throwaway database per test (skipped locally if unreachable; fails in CI) |
+| `ml` | 73 | Allowlist and leakage, split limits, metrics on hand-computed cases, exact contributions, artifacts |
+| `dashboard` | 34 | Marts-only queries, scoring, and the whole app run headless with `AppTest` |
+| dbt | 124 nodes | Run by `make transform` |
 
 CI (GitHub Actions) runs ruff and pytest per package. A compose smoke run then covers a 3-day
 backfill, load, incremental no-op, `dbt build`, freshness, the docs artifact, grants and login

@@ -4,6 +4,7 @@ from dataclasses import replace
 
 import duckdb
 import psycopg
+import pytest
 
 from loader.lake import Lake
 from loader.main import run
@@ -71,21 +72,14 @@ def test_first_run_loads_every_committed_date_and_audits_it(settings, lake_path)
     assert "reference_date" not in columns  # hive partition key not duplicated
 
 
-def test_audit_table_from_an_older_loader_is_migrated_in_place(settings):
-    query_ddl = (
-        "create table audit.lake_loads (load_id uuid primary key, reference_date date not null, "
-        "batch_id text not null, manifest_sha256 char(64) not null, contract_version text not null, "
-        "rows_loaded jsonb not null, started_at timestamp not null, finished_at timestamp not null)"
+def test_audit_table_requires_the_manifest_counts(settings):
+    run(settings)
+    nullable = query(
+        settings,
+        "select is_nullable from information_schema.columns "
+        "where table_schema = 'audit' and table_name = 'lake_loads' and column_name = 'manifest_entities'",
     )
-    with psycopg.connect(settings.postgres_dsn, autocommit=True) as conn:
-        conn.execute(query_ddl)
-
-    report = run(settings)
-
-    assert report.loaded == [DAY_1, DAY_2]
-    assert query(settings, "select count(*) from audit.lake_loads where manifest_entities is not null") == [
-        (2,)
-    ]
+    assert nullable == [("NO",)]
 
 
 def raw_reference_date_indexes(settings) -> set[str]:
@@ -207,6 +201,25 @@ def test_manifest_changed_during_load_is_rolled_back(settings, monkeypatch):
 
     assert report.failed == [DAY_2]
     assert raw_rows(settings, "customers", DAY_2) == 0
+
+
+def test_malformed_manifest_leaves_the_date_pending(settings, lake_path):
+    manifest_file(lake_path, DAY_2).write_text("{truncated")
+
+    report = run(settings)
+
+    assert report.loaded == [DAY_1]
+    assert report.failed == [DAY_2]
+    assert raw_rows(settings, "customers", DAY_2) == 0
+
+
+def test_a_bug_in_the_loader_is_raised_not_kept_as_a_pending_date(settings, monkeypatch):
+    def bug(*_args, **_kwargs):
+        raise KeyError("rows_valid")
+
+    monkeypatch.setattr(Warehouse, "_replace_partition", bug)
+    with pytest.raises(KeyError):
+        run(settings)
 
 
 def test_hostile_entity_name_in_manifest_never_reaches_sql(settings, lake_path):

@@ -19,8 +19,10 @@ from ml.features import (
     reference_installment_to_income_ratio,
 )
 
-# Display-only grades for the simulated PD (not a credit policy).
-RISK_BANDS: tuple[tuple[str, float], ...] = (("A", 0.02), ("B", 0.05), ("C", 0.10), ("D", 0.20), ("E", 1.01))
+# Display-only grades for the simulated PD (not a credit policy): each band's exclusive upper bound, then
+# the top band for everything above the last bound.
+RISK_BANDS: tuple[tuple[str, float], ...] = (("A", 0.02), ("B", 0.05), ("C", 0.10), ("D", 0.20))
+TOP_RISK_BAND = "E"
 
 
 # Optional display metadata (label, min, max, step); integer steps give integer inputs. A numeric feature
@@ -103,7 +105,7 @@ def applicant_frame(values: dict) -> pd.DataFrame:
 
 
 def risk_band(pd_hat: float) -> str:
-    return next(band for band, upper in RISK_BANDS if pd_hat < upper)
+    return next((band for band, upper in RISK_BANDS if pd_hat < upper), TOP_RISK_BAND)
 
 
 def score(model: Pipeline, values: dict) -> tuple[float, pd.Series]:
@@ -111,17 +113,3 @@ def score(model: Pipeline, values: dict) -> tuple[float, pd.Series]:
     row = applicant_frame(values)
     pd_hat = float(model.predict_proba(row)[:, 1][0])
     return pd_hat, contributions(model, row)
-
-
-__all__ = [
-    "FEATURES",
-    "FIELD_META",
-    "RISK_BANDS",
-    "SimulationField",
-    "ModelArtifacts",
-    "applicant_frame",
-    "load_artifacts",
-    "risk_band",
-    "score",
-    "simulation_fields",
-]

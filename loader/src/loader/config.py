@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     aws_region: str = "us-east-1"
 
     # --- Warehouse -------------------------------------------------------------
-    postgres_host: str = "localhost"
+    postgres_host: str = "127.0.0.1"
     postgres_port: int = 5432
     postgres_db: str = "credit_risk_dw"
     postgres_user: str = ""
