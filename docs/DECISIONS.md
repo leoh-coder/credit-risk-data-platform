@@ -86,7 +86,7 @@ chosen otherwise, the entry also names that alternative and why it was not taken
   - incomplete label window: warn > 15% (10.7% observed with a 1% dirty rate), error > 30%;
   - quarantine per entity: warn > 5%, error > 10%, on a rolling window of the last 7 loaded dates (`ROWS BETWEEN 6 PRECEDING AND CURRENT ROW`), evaluated once the window holds 7 dates. `dq_ingestion_daily` computes the flags, so the dbt tests and the dashboard read the same rule.
 
-  Only these budget tests store their failing rows in `audit`; stored failures for every test would copy whatever the PII scan found into that schema.
+  Only these budget tests store their failing rows in `audit`, because those are the rows worth inspecting; set globally, `store_failures` left about a hundred empty tables there.
 - **Rejected:** pass/fail checks (ignored once they flap) and a daily quarantine rate (pure noise on ~30-row batches).
 
 ## Model
