@@ -136,6 +136,14 @@ def test_final_model_is_refit_on_train_and_validation_and_scored_once_on_test(sy
     )
 
 
+def test_the_order_of_the_population_rows_does_not_change_the_models(synthetic_population, tmp_path):
+    # The warehouse returns rows in no fixed order; boosting's early stopping splits them by position.
+    shuffled = synthetic_population.sample(frac=1, random_state=1)
+    as_given = train(synthetic_population, tmp_path / "as_given")
+    reordered = train(shuffled, tmp_path / "shuffled")
+    assert reordered["models"] == as_given["models"]
+
+
 @pytest.mark.parametrize("model", ["logistic_regression", "hist_gradient_boosting"])
 def test_hyperparameters_are_chosen_by_validation_auc(synthetic_population, tmp_path, model):
     report = train(synthetic_population, tmp_path)

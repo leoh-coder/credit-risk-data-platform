@@ -79,6 +79,8 @@ def _max_decile_gap(y, pd_hat) -> float:
 def train(
     population: pd.DataFrame, artifacts_dir: Path, validation_months: int = 3, test_months: int = 3
 ) -> dict:
+    # The warehouse returns rows in no fixed order, and boosting's early stopping splits them by position.
+    population = population.sort_values("operation_id", kind="stable")
     observation_date = pd.to_datetime(population["observed_at"]).min().date()
     max_contract_date = max_mature_contract_date(observation_date)
     # After the limit only short products are mature: their mix would bias the rates, so they are reported.
