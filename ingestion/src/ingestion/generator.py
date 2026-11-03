@@ -160,23 +160,30 @@ def _metadata(df: pd.DataFrame, ctx: BatchContext) -> pd.DataFrame:
     )
 
 
-def generate_batch(
-    reference_date: date,
-    as_of: date,
-    seed: int = 42,
-    customers_per_batch: int = 30,
-    history_days: int = 90,
-) -> dict[str, pd.DataFrame]:
-    if as_of < reference_date:
-        raise ValueError(f"as_of ({as_of}) cannot be earlier than reference_date ({reference_date})")
+@dataclass(frozen=True)
+class _Customers:
+    frame: pd.DataFrame
+    z: np.ndarray  # hidden latent risk, never exported
+    age: np.ndarray
+    employment: np.ndarray
+    income: np.ndarray
+    bureau_score: np.ndarray
 
-    ctx = BatchContext(reference_date, as_of, seed)
-    rng = np.random.default_rng([seed, reference_date.toordinal()])
-    fake = Faker("pt_BR")
-    fake.seed_instance(seed * 1_000_003 + reference_date.toordinal())
+
+@dataclass(frozen=True)
+class _Operations:
+    frame: pd.DataFrame
+    customer_row: np.ndarray  # position in _Customers of each operation's customer
+    product: np.ndarray
+    terms: np.ndarray
+    installment_amount: np.ndarray
+    dti: np.ndarray
+
+
+def _customers(
+    rng: np.random.Generator, fake: Faker, reference_date: date, customers_per_batch: int
+) -> _Customers:
     ref_ts = pd.Timestamp(reference_date)
-
-    # ------------------------------------------------------------------ customers
     n = max(1, int(rng.poisson(customers_per_batch)))
     z = rng.standard_normal(n)  # hidden latent risk, never exported
 
@@ -208,18 +215,22 @@ def generate_batch(
             "registration_date": ref_ts,
         }
     )
+    return _Customers(customers, z, age, employment, income, bureau_score)
 
-    # ---------------------------------------------------------- credit_operations
+
+def _credit_operations(rng: np.random.Generator, reference_date: date, customers: _Customers) -> _Operations:
+    ref_ts = pd.Timestamp(reference_date)
+    n = len(customers.frame)
     ops_per_customer = 1 + (rng.random(n) < 0.25).astype(int)
     c_idx = np.repeat(np.arange(n), ops_per_customer)
     n_ops = len(c_idx)
 
-    eligible = np.isin(employment[c_idx], list(PAYROLL_ELIGIBLE))
+    eligible = np.isin(customers.employment[c_idx], list(PAYROLL_ELIGIBLE))
     prod_p = np.column_stack([np.full(n_ops, 0.5), np.where(eligible, 0.3, 0.0), np.full(n_ops, 0.2)])
     product = PRODUCT_TYPES[_sample_rows(rng, prod_p)]
 
-    op_income = income[c_idx]
-    op_score = bureau_score[c_idx]
+    op_income = customers.income[c_idx]
+    op_score = customers.bureau_score[c_idx]
     lo = np.array([_PRODUCT_RATE[p][0] for p in product])
     hi = np.array([_PRODUCT_RATE[p][1] for p in product])
     rate = np.round(lo + (hi - lo) * (1 - op_score / 1000) + rng.normal(0, 0.002, n_ops), 4)
@@ -241,7 +252,7 @@ def generate_batch(
     credit_operations = pd.DataFrame(
         {
             "operation_id": [f"OPR{reference_date:%Y%m%d}{i:05d}" for i in range(n_ops)],
-            "customer_id": customers["customer_id"].to_numpy()[c_idx],
+            "customer_id": customers.frame["customer_id"].to_numpy()[c_idx],
             "product_type": product,
             "contract_date": ref_ts,
             "principal_amount": principal,
@@ -251,16 +262,29 @@ def generate_batch(
             "bureau_score_at_origination": op_score,
         }
     )
+    return _Operations(credit_operations, c_idx, product, terms, installment_amount, dti)
 
-    # ------------------------------------------------- default ground truth (hidden)
+
+def _installments(
+    rng: np.random.Generator,
+    reference_date: date,
+    as_of: date,
+    customers: _Customers,
+    operations: _Operations,
+) -> pd.DataFrame:
+    ref_ts = pd.Timestamp(reference_date)
+    c_idx, product, terms = operations.customer_row, operations.product, operations.terms
+    z = customers.z
+    n_ops = len(c_idx)
+
+    # Default ground truth (hidden), drawn before the schedule.
     product_effect = np.array([_PRODUCT_DEFAULT_EFFECT[p] for p in product])
-    youth_effect = 0.03 * np.clip(30 - age[c_idx], 0, None)
-    default_logit = -2.9 + 1.2 * z[c_idx] + 4.0 * (dti - 0.15) + product_effect + youth_effect
+    youth_effect = 0.03 * np.clip(30 - customers.age[c_idx], 0, None)
+    default_logit = -2.9 + 1.2 * z[c_idx] + 4.0 * (operations.dti - 0.15) + product_effect + youth_effect
     will_default = rng.random(n_ops) < _sigmoid(default_logit)
     # defaults concentrate early in the contract life (first-payment / early default)
     default_start = np.minimum(1 + rng.geometric(0.22, n_ops), terms)
 
-    # --------------------------------------------------------------- installments
     op_idx = np.repeat(np.arange(n_ops), terms)
     starts = np.repeat(np.cumsum(terms) - terms, terms)
     k = np.arange(len(op_idx)) - starts + 1  # installment number, 1..term
@@ -274,15 +298,13 @@ def generate_batch(
     payment_date = due_date + pd.to_timedelta(delay_days, unit="D")
 
     observed = (~defaulted_here) & (payment_date <= pd.Timestamp(as_of))
-    amount_due = installment_amount[op_idx]
+    amount_due = operations.installment_amount[op_idx]
+    operation_ids = operations.frame["operation_id"]
 
-    installments = pd.DataFrame(
+    return pd.DataFrame(
         {
-            "installment_id": [
-                f"{credit_operations['operation_id'].iat[o]}-{n_:03d}"
-                for o, n_ in zip(op_idx, k, strict=True)
-            ],
-            "operation_id": credit_operations["operation_id"].to_numpy()[op_idx],
+            "installment_id": [f"{operation_ids.iat[o]}-{n_:03d}" for o, n_ in zip(op_idx, k, strict=True)],
+            "operation_id": operation_ids.to_numpy()[op_idx],
             "installment_number": k,
             "due_date": due_date,
             "amount_due": amount_due,
@@ -291,12 +313,17 @@ def generate_batch(
         }
     )
 
-    # --------------------------------------------------------------- transactions
+
+def _transactions(
+    rng: np.random.Generator, reference_date: date, customers: _Customers, history_days: int
+) -> pd.DataFrame:
+    ref_ts = pd.Timestamp(reference_date)
+    n = len(customers.frame)
     tx_per_customer = rng.poisson(history_days * 0.55, n)
     t_idx = np.repeat(np.arange(n), tx_per_customer)
     n_tx = len(t_idx)
-    tz = z[t_idx]
-    t_income = income[t_idx]
+    tz = customers.z[t_idx]
+    t_income = customers.income[t_idx]
 
     is_credit = rng.random(n_tx) < 0.25
     credit_type = TRANSACTION_TYPES_CREDIT[(rng.random(n_tx) < 0.5).astype(int)]
@@ -330,11 +357,11 @@ def generate_batch(
     seconds_back = rng.integers(60, history_days * 86_400, n_tx)
     tx_ts = ref_ts - pd.to_timedelta(seconds_back, unit="s")
 
-    transactions = (
+    return (
         pd.DataFrame(
             {
                 "transaction_id": [f"TRX{reference_date:%Y%m%d}{i:07d}" for i in range(n_tx)],
-                "customer_id": customers["customer_id"].to_numpy()[t_idx],
+                "customer_id": customers.frame["customer_id"].to_numpy()[t_idx],
                 "transaction_ts": tx_ts,
                 "transaction_type": tx_type,
                 "direction": np.where(is_credit, "credit", "debit"),
@@ -347,11 +374,33 @@ def generate_batch(
         .reset_index(drop=True)
     )
 
+
+def generate_batch(
+    reference_date: date,
+    as_of: date,
+    seed: int = 42,
+    customers_per_batch: int = 30,
+    history_days: int = 90,
+) -> dict[str, pd.DataFrame]:
+    if as_of < reference_date:
+        raise ValueError(f"as_of ({as_of}) cannot be earlier than reference_date ({reference_date})")
+
+    ctx = BatchContext(reference_date, as_of, seed)
+    rng = np.random.default_rng([seed, reference_date.toordinal()])
+    fake = Faker("pt_BR")
+    fake.seed_instance(seed * 1_000_003 + reference_date.toordinal())
+
+    # One random stream per batch: the entities must keep drawing from it in this order.
+    customers = _customers(rng, fake, reference_date, customers_per_batch)
+    operations = _credit_operations(rng, reference_date, customers)
+    installments = _installments(rng, reference_date, as_of, customers, operations)
+    transactions = _transactions(rng, reference_date, customers, history_days)
+
     return {
         name: _metadata(df, ctx)
         for name, df in {
-            "customers": customers,
-            "credit_operations": credit_operations,
+            "customers": customers.frame,
+            "credit_operations": operations.frame,
             "installments": installments,
             "transactions": transactions,
         }.items()

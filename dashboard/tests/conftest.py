@@ -136,6 +136,14 @@ def fake_marts() -> dict[str, pd.DataFrame]:
                     "immature": 0,
                 },
                 {"year_month": "2025-08", "product_type": "payroll_loan", "labeled": 0, "defaults": 0, "immature": 40},
+                # a partial personal-loan cohort: the short loans are labeled, the longer ones not yet
+                {
+                    "year_month": "2025-09",
+                    "product_type": "personal_loan",
+                    "labeled": 40,
+                    "defaults": 30,
+                    "immature": 10,
+                },
             ]
         ),
         "label_status": pd.DataFrame(

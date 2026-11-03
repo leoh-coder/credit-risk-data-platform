@@ -10,6 +10,7 @@ from dashboard.scoring import (
     TOP_RISK_BAND,
     applicant_frame,
     load_artifacts,
+    readable_input,
     risk_band,
     score,
     simulation_fields,
@@ -99,3 +100,16 @@ def test_a_new_feature_without_metadata_still_gets_a_field():
     new = next(field for field in fields if field.feature == "brand_new_ratio")
     assert new.label == "Brand new ratio"
     assert new.min_value <= new.max_value
+
+
+@pytest.mark.parametrize(
+    ("name", "feature", "label"),
+    [
+        ("cat__product_type_payroll_loan", "product_type", "product_type = payroll_loan"),
+        ("cat__employment_type_infrequent_sklearn", "employment_type", "employment_type = other (infrequent)"),
+        ("money__monthly_income", "monthly_income", "monthly_income (log)"),
+        ("num__bureau_score_at_origination", "bureau_score_at_origination", "bureau_score_at_origination"),
+    ],
+)
+def test_model_inputs_get_readable_labels(name, feature, label):
+    assert readable_input(name, feature) == label

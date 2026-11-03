@@ -1,9 +1,13 @@
 """The whole Streamlit script, run headless with AppTest against fake marts and real model artifacts."""
 
+import base64
+import json
 import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import numpy as np
+import pandas as pd
 import pytest
 import streamlit as st
 from sqlalchemy.exc import OperationalError, ProgrammingError
@@ -32,6 +36,18 @@ def app(monkeypatch, artifacts_dir):
 
 def metric(at, label):
     return next(m.value for m in at.metric if m.label == label)
+
+
+def plotly_values(array) -> list:
+    """Plotly serializes numpy arrays as base64 typed arrays."""
+    if isinstance(array, dict) and "bdata" in array:
+        return np.frombuffer(base64.b64decode(array["bdata"]), dtype=array["dtype"]).tolist()
+    return list(array)
+
+
+def chart_with_axis_title(at, axis: str, text: str) -> dict:
+    specs = [json.loads(chart.proto.spec) for chart in at.get("plotly_chart")]
+    return next(s for s in specs if text in s["layout"].get(axis, {}).get("title", {}).get("text", ""))
 
 
 def test_all_three_tabs_render_without_exceptions(app):
@@ -130,3 +146,42 @@ def test_odds_ratios_are_read_against_the_reference_category(app):
     headings = " ".join(s.value for s in app.subheader)
     assert "vs. the reference category" in headings
     assert "vs. the rest" not in headings
+
+
+def test_odds_ratios_are_drawn_from_one_with_readable_names(app, artifacts_dir):
+    app.run()
+    chart = chart_with_axis_title(app, "xaxis", "Odds ratio")
+    bars = chart["data"][0]
+    expected = pd.read_csv(artifacts_dir / "coefficients.csv").sort_values("odds_ratio")
+
+    assert bars["base"] == 1  # every bar starts at an odds ratio of 1
+    assert plotly_values(bars["x"]) == pytest.approx((expected["odds_ratio"] - 1).tolist())
+    assert plotly_values(bars["marker"]["color"]) == [
+        "#c0392b" if ratio > 1 else "#2e86c1" for ratio in expected["odds_ratio"]
+    ]
+    labels = plotly_values(bars["y"])
+    assert not any("__" in label for label in labels)
+    assert {"product_type = payroll_loan", "monthly_income (log)", "bureau_score_at_origination"} <= set(labels)
+
+    axis = chart["layout"]["xaxis"]
+    assert axis["type"] == "log"
+    assert 1 in axis["tickvals"] and "1" in axis["ticktext"]
+    assert any(shape.get("x0") == 1 and shape.get("x1") == 1 for shape in chart["layout"]["shapes"])
+
+
+def test_cohort_default_rate_shows_only_fully_mature_product_cohorts(app):
+    app.run()
+    chart = chart_with_axis_title(app, "yaxis", "default_rate")
+    months = {trace["name"]: plotly_values(trace["x"]) for trace in chart["data"]}
+
+    assert months["personal_loan"] == ["2025-01", "2025-02", "2025-03", "2025-08"]
+    assert "2025-09" not in months["personal_loan"]  # 10 of its personal loans are not mature yet
+    assert "2025-08" not in months["payroll_loan"]  # nothing labeled
+    assert any("every contract is mature" in c.value for c in app.caption)
+
+
+def test_model_metrics_are_shown_with_three_decimals(app):
+    app.run()
+    columns = json.loads(app.dataframe[0].proto.columns)
+    for name in ("auc", "gini", "ks", "brier"):
+        assert columns[name]["type_config"]["format"] == "%.3f"  # 0.830, not 0.83

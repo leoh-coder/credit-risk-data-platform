@@ -113,3 +113,13 @@ def score(model: Pipeline, values: dict) -> tuple[float, pd.Series]:
     row = applicant_frame(values)
     pd_hat = float(model.predict_proba(row)[:, 1][0])
     return pd_hat, contributions(model, row)
+
+
+def readable_input(name: str, feature: str) -> str:
+    """Label for a model input: 'cat__product_type_payroll_loan' -> 'product_type = payroll_loan', and money
+    inputs, which the model sees as log1p, -> 'monthly_income (log)'."""
+    block, _, column = name.partition("__")
+    if block == "cat":
+        level = column.removeprefix(f"{feature}_")
+        return f"{feature} = {'other (infrequent)' if level == 'infrequent_sklearn' else level}"
+    return f"{feature} (log)" if block == "money" else feature
