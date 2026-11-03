@@ -204,7 +204,7 @@ make test lint
 
 pytest runs 28 tests in `ingestion` (including the S3 path against moto), 23 in `loader` (real
 Postgres, a throwaway database per test; skipped locally without Postgres, never in CI), 73 in
-`ml` and 34 in `dashboard` (including the whole app run headless with `AppTest`). CI runs ruff and
+`ml` and 41 in `dashboard` (including the whole app run headless with `AppTest`). CI runs ruff and
 pytest per package, then a Compose smoke run: a 3-day backfill, load, incremental no-op,
 `dbt build`, freshness, the docs artifact, grants and login roles, the ML population query as
 `ml_reader`, every dashboard query as `dashboard_reader`, and the dashboard health check. The model
