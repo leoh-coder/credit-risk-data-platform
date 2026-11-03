@@ -88,6 +88,7 @@ services:
       SEED: ${SEED:-42}
       CUSTOMERS_PER_BATCH: ${CUSTOMERS_PER_BATCH:-30}
       DIRTY_RATE: ${DIRTY_RATE:-0.01}
+      HISTORY_DAYS: ${HISTORY_DAYS:-90}
     depends_on:
       seaweedfs:
         condition: service_healthy
