@@ -167,3 +167,14 @@ def test_odds_ratios_are_drawn_from_one_with_readable_names(app, artifacts_dir):
     assert axis["type"] == "log"
     assert 1 in axis["tickvals"] and "1" in axis["ticktext"]
     assert any(shape.get("x0") == 1 and shape.get("x1") == 1 for shape in chart["layout"]["shapes"])
+
+
+def test_cohort_default_rate_shows_only_fully_mature_product_cohorts(app):
+    app.run()
+    chart = chart_with_axis_title(app, "yaxis", "default_rate")
+    months = {trace["name"]: plotly_values(trace["x"]) for trace in chart["data"]}
+
+    assert months["personal_loan"] == ["2025-01", "2025-02", "2025-03", "2025-08"]
+    assert "2025-09" not in months["personal_loan"]  # 10 of its personal loans are not mature yet
+    assert "2025-08" not in months["payroll_loan"]  # nothing labeled
+    assert any("every contract is mature" in c.value for c in app.caption)

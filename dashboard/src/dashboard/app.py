@@ -117,12 +117,15 @@ def portfolio_tab() -> None:
     st.plotly_chart(px.bar(monthly, x="year_month", y="contracts", color="product_type"), width="stretch")
 
     st.subheader("Default rate by contract cohort (90+ DPD in the first 12 installments)")
-    mature = cohorts[cohorts["labeled"] >= 30].assign(default_rate=lambda f: f["defaults"] / f["labeled"])
+    # Same composition bias as the KPI: until a product's cohort is fully mature only its short loans carry
+    # a label, so the rate is shown only for product-months without immature contracts.
+    complete = cohorts[(cohorts["immature"] == 0) & (cohorts["labeled"] >= 30)]
+    mature = complete.assign(default_rate=lambda f: f["defaults"] / f["labeled"])
     st.plotly_chart(
         px.line(mature, x="year_month", y="default_rate", color="product_type", markers=True),
         width="stretch",
     )
-    st.caption("Only cohorts with at least 30 labeled contracts; recent cohorts are not mature yet.")
+    st.caption("Only product cohorts in which every contract is mature, with at least 30 labeled contracts.")
 
     left, right = st.columns(2)
     left.subheader("Label status")
