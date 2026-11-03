@@ -93,7 +93,7 @@ chosen otherwise, the entry also names that alternative and why it was not taken
 
 ### D21. Out-of-time train / validation / test on mature cohorts only
 - **Why:**
-  - **Maturity limit from the data.** The last contract date mature for every product is computed from the observation clock (`min(observed_at)` of the facts): observation - 90 days - 12 months, the same parameters as the dbt label (tested against the dbt vars). For the current data that is 2025-07-17. Later contracts raise instead of being dropped silently.
+  - **Maturity limit from the data.** The last contract date mature for every product is computed from the observation clock (`min(observed_at)` of the facts): observation - 90 days - 12 months, the same parameters as the dbt label (tested against the dbt vars). For the current data that is 2025-07-17. Later contracts are excluded and reported in `metrics.json` and the model card (883 contracts with 201 defaults), because after the limit only short products are mature and their mix would bias the rates; the split refuses any it receives.
   - **Three periods.** Test = the last `test_months` (3) before the limit, validation = the `validation_months` (3) before the test, train = everything earlier. Both sizes are parameters.
   - **One look at the test.** Hyperparameters, feature-exclusion evidence and permutation importance use the validation period only. The chosen models are refit on train + validation and scored once on the test period. An earlier version tuned the comparison model and judged features on the test period, which made its metrics optimistic.
 - **Rejected:** a random split (leaks the future into training and hides drift) and a single train/test split used for tuning.

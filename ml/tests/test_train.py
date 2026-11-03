@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 
 import joblib
@@ -74,14 +75,23 @@ def test_calibration_artifact_has_ten_bins(synthetic_population, tmp_path):
     assert len(pd.read_csv(tmp_path / "calibration.csv")) == 10
 
 
-def test_contracts_after_the_maturity_limit_never_reach_training(synthetic_population, tmp_path):
+def test_contracts_after_the_maturity_limit_are_excluded_and_reported(synthetic_population, tmp_path, caplog):
     late = synthetic_population.head(50).assign(contract_date=pd.Timestamp("2025-09-01"), operation_id="late")
-    report = train(pd.concat([synthetic_population, late], ignore_index=True), tmp_path)
+    late_defaults = int(late[TARGET].sum())
+    with caplog.at_level(logging.INFO, logger="ml"):
+        report = train(pd.concat([synthetic_population, late], ignore_index=True), tmp_path)
 
     assert report["split"]["max_contract_date"] == "2025-07-17"
     assert report["split"]["test"]["to"] <= "2025-07-17"
     periods = ("train", "validation", "test")
     assert sum(report["split"][p]["rows"] for p in periods) == len(synthetic_population)
+
+    excluded = {"rows": 50, "defaults": late_defaults}
+    assert report["split"]["excluded_after_maturity_limit"] == excluded
+    stored = json.loads((tmp_path / "metrics.json").read_text())
+    assert stored["split"]["excluded_after_maturity_limit"] == excluded
+    assert f"50 contracts ({late_defaults} defaults)" in (tmp_path / "model_card.md").read_text()
+    assert f"excluded 50 contracts ({late_defaults} defaults) after the maturity limit" in caplog.text
 
 
 def _periods(population):

@@ -1,7 +1,8 @@
 """Out-of-time train / validation / test split on contract dates, bounded by the last contract that is
 mature for every product.
 
-Contracts after that date are only mature for short products; they raise instead of being dropped.
+After that date only short products are mature, so their mix would bias the rates: the training job
+excludes and reports those contracts, and this split refuses any it receives.
 """
 
 from __future__ import annotations

@@ -79,7 +79,15 @@ def train(
 ) -> dict:
     observation_date = pd.to_datetime(population["observed_at"]).min().date()
     max_contract_date = max_mature_contract_date(observation_date)
-    mature = population.loc[pd.to_datetime(population["contract_date"]).dt.date <= max_contract_date]
+    # After the limit only short products are mature: their mix would bias the rates, so they are reported.
+    is_mature = pd.to_datetime(population["contract_date"]).dt.date <= max_contract_date
+    mature, excluded = population.loc[is_mature], evaluate_counts(population.loc[~is_mature])
+    logger.info(
+        "excluded %d contracts (%d defaults) after the maturity limit %s",
+        excluded["rows"],
+        excluded["defaults"],
+        max_contract_date,
+    )
     train_df, validation_df, test_df = out_of_time_split(
         mature, max_contract_date, validation_months=validation_months, test_months=test_months
     )
@@ -123,6 +131,7 @@ def train(
             "type": "out_of_time",
             "observation_date": str(observation_date),
             "max_contract_date": str(max_contract_date),
+            "excluded_after_maturity_limit": excluded,
             "validation_months": validation_months,
             "test_months": test_months,
             "train": _period(train_df),
@@ -175,6 +184,8 @@ def model_card(report: dict) -> str:
     def period(p):
         return f"{p['from']} .. {p['to']} ({p['rows']} contracts, {p['defaults']} defaults)"
 
+    excluded = split["excluded_after_maturity_limit"]
+    late = f"{excluded['rows']} contracts ({excluded['defaults']} defaults)"
     products = "\n".join(row(product, m) for product, m in lr["test_by_product"].items())
     features = ", ".join(f"`{f}`" for f in report["features"])
     forbidden = ", ".join(f"`{f}`" for f in report["forbidden_columns"])
@@ -188,12 +199,13 @@ def model_card(report: dict) -> str:
   - Train: {period(split["train"])}.
   - Validation: {period(split["validation"])}.
   - Test: {period(split["test"])}.
-  - Observation clock {split["observation_date"]}: contracts after {split["max_contract_date"]} are excluded,
-    because not every product is mature after that date.
+  - Observation clock {split["observation_date"]}: the {late} after {split["max_contract_date"]} are
+    excluded and reported, because after that date only short products are mature and their mix would
+    bias the rates.
 - **Selection:** hyperparameters and permutation importance use the validation period only. The chosen
   models are refit on train + validation and scored once on the test period.
-- **Main model:** logistic regression (scorecard standard), {lr["params"]}. Comparison: HistGradientBoosting,
-  {hgb["params"]}.
+- **Main model:** logistic regression (the standard in credit scoring), {lr["params"]}. Comparison:
+  HistGradientBoosting, {hgb["params"]}.
 
 ## Metrics
 
