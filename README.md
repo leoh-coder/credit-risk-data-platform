@@ -188,31 +188,10 @@ containers never receive the admin credentials, and the dashboard's queries are 
 
 See [docs/DECISIONS.md](docs/DECISIONS.md).
 
-## Portability notes
+## Portability
 
-The warehouse targets PostgreSQL 17, and the project is **not** fully portable. Where a dbt or
-`dbt_utils` macro exists, the models use it:
-- `dbt_utils.date_spine` instead of `generate_series`;
-- `dbt.dateadd` instead of `make_interval`;
-- `SUM(CASE WHEN ...)` instead of `FILTER (WHERE ...)`;
-- `ROW_NUMBER() OVER (...)` instead of `DISTINCT ON`.
-
-What is still Postgres-specific, and the usual Amazon Redshift equivalent:
-
-| Postgres construct | Where | Redshift equivalent |
-|---|---|---|
-| `jsonb`, `->>`, `jsonb_each` with `CROSS JOIN LATERAL` | `audit.lake_loads.manifest_entities`, `dq_ingestion_daily`, `assert_raw_matches_latest_lake_load` | A `SUPER` column navigated with PartiQL, and unnesting/unpivoting of the object instead of `jsonb_each` |
-| `sha256()` + `convert_to()` + `encode(..., 'hex')` | `stg_core_banking__customers` (CPF hash) | `SHA2(expr, 256)` |
-| `age()` with `date_part('year', ...)` | `dim_customers` (age at registration) | `DATEDIFF(year, ...)` plus a birthday adjustment (no `AGE`) |
-| `extract(isodow ...)` | `dim_date` | `DATE_PART(dow, ...)` (Sunday = 0), remapped to ISO |
-| Regex class `\D` in `regexp_replace` | `stg_core_banking__customers` | An explicit class such as `[^0-9]` |
-| Enforced `PRIMARY KEY` from dbt contracts | every mart | Redshift enforces `NOT NULL` only; primary keys are informational, so the dbt `unique` tests remain the real guard |
-| `DO $$ ... $$` block, `NOLOGIN` role | `infra/postgres/init.sql` | No anonymous blocks: plain `CREATE ROLE` / groups and a stored procedure if needed |
-| psql meta-commands (`\getenv`, `\gexec`, `\if`) | `infra/postgres/roles.sql` | Plain `CREATE USER ... PASSWORD` and `GRANT ROLE` run by the deployment tool |
-| Loading through DuckDB's `postgres` extension (wire protocol) | `loader/` | `COPY` from the Parquet files already in S3; row inserts do not scale on Redshift |
-
-These were reviewed by reading the code, not by running on Redshift. A real port would
-start by running `dbt build` against a Redshift target.
+The SQL targets PostgreSQL 17; [docs/PORTABILITY.md](docs/PORTABILITY.md) lists what is still
+Postgres-specific and the Redshift equivalent of each construct.
 
 ## Running locally
 
@@ -275,7 +254,7 @@ not trained in CI, because a short backfill has no mature cohort.
 ## Limitations
 
 - The data is synthetic.
-- The warehouse SQL still contains Postgres-specific constructs (see the portability notes).
+- The warehouse SQL still contains Postgres-specific constructs (see [docs/PORTABILITY.md](docs/PORTABILITY.md)).
 - Vehicle financing PD is under-predicted on the most recent test cohorts.
 
 ## Project structure

@@ -80,7 +80,7 @@ Each entry: the decision, why, and the alternative that was rejected.
 - **Rejected:** treating immature or partially observed contracts as good payers (right-censoring bias), and labeling only the defaults of incomplete windows (selection bias).
 
 ### D18. Portable SQL where a macro exists
-- **Why:** `dbt_utils.date_spine` instead of `generate_series` (not supported on Redshift data tables), `dbt.dateadd` instead of `make_interval`, `SUM(CASE ...)` instead of `FILTER (WHERE ...)`, `ROW_NUMBER()` instead of `DISTINCT ON`. What remains Postgres-specific is listed in the README.
+- **Why:** `dbt_utils.date_spine` instead of `generate_series` (not supported on Redshift data tables), `dbt.dateadd` instead of `make_interval`, `SUM(CASE ...)` instead of `FILTER (WHERE ...)`, `ROW_NUMBER()` instead of `DISTINCT ON`. What remains Postgres-specific is listed in [PORTABILITY.md](PORTABILITY.md).
 - **Rejected:** claiming full portability without running on another adapter.
 
 ### D19. Contracts at both ends
