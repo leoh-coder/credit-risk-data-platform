@@ -5,7 +5,7 @@
 #   docker compose run --rm loader run           -> loads committed lake dates into Postgres raw
 #   docker compose run --rm dbt build            -> staging -> intermediate -> marts, with tests
 #   docker compose run --rm ml                   -> trains the PD model (artifacts in the ml-artifacts volume)
-#   docker compose --profile app up dashboard    -> Streamlit at http://localhost:8501
+#   docker compose --profile app up dashboard    -> Streamlit at http://127.0.0.1:8501
 #
 # Jobs (ingestion, loader, dbt, ml) live under the "jobs" profile:
 # they run to completion and exit, they are not long-running services.
@@ -45,7 +45,7 @@ services:
         -master.volumeSizeLimitMB=1024
     ports:
       - "127.0.0.1:8333:8333"   # S3 API
-      - "127.0.0.1:8888:8888"   # Filer UI: browse the lake at http://localhost:8888/buckets/
+      - "127.0.0.1:8888:8888"   # Filer UI: browse the lake at http://127.0.0.1:8888/buckets/
     volumes:
       - seaweedfs-data:/data
     healthcheck:
@@ -117,7 +117,7 @@ services:
       postgres:
         condition: service_healthy
 
-  # dbt docs site (lineage graph, column docs, tests) at http://localhost:8080 - `make docs`.
+  # dbt docs site (lineage graph, column docs, tests) at http://127.0.0.1:8080 - `make docs`.
   dbt-docs:
     image: credit-risk-data-platform/dbt:latest
     build: ./dbt
@@ -149,7 +149,7 @@ services:
       postgres:
         condition: service_healthy
 
-  # Streamlit at http://localhost:8501 (`make dashboard`), as dashboard_reader.
+  # Streamlit at http://127.0.0.1:8501 (`make dashboard`), as dashboard_reader.
   dashboard:
     build:
       context: ./dashboard

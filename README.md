@@ -231,11 +231,11 @@ make dashboard                                    # docker compose --profile app
 
 | Service | Address |
 |---|---|
-| Dashboard | http://localhost:8501 |
-| dbt docs (`make docs`) | http://localhost:8080 |
-| SeaweedFS S3 API | `http://localhost:8333` |
-| SeaweedFS filer UI | http://localhost:8888/buckets/ |
-| PostgreSQL | `localhost:5432`, database `credit_risk_dw` |
+| Dashboard | http://127.0.0.1:8501 |
+| dbt docs (`make docs`) | http://127.0.0.1:8080 |
+| SeaweedFS S3 API | `http://127.0.0.1:8333` |
+| SeaweedFS filer UI | http://127.0.0.1:8888/buckets/ |
+| PostgreSQL | `127.0.0.1:5432`, database `credit_risk_dw` |
 
 The full backfill takes about 40 minutes on an HDD. A short range (for example a week) is
 enough for everything except training, because the model needs mature cohorts.

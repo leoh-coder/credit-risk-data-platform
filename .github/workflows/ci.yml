@@ -35,7 +35,7 @@ jobs:
           --health-cmd "pg_isready -U dw_admin -d credit_risk_dw"
           --health-interval 5s --health-timeout 3s --health-retries 20
     env:
-      LOADER_TEST_PG_DSN: host=localhost port=5432 dbname=credit_risk_dw user=dw_admin password=ci_only_password
+      LOADER_TEST_PG_DSN: host=127.0.0.1 port=5432 dbname=credit_risk_dw user=dw_admin password=ci_only_password
     defaults:
       run:
         working-directory: ${{ matrix.package }}
@@ -200,7 +200,7 @@ jobs:
       - name: Dashboard container becomes healthy
         run: |
           docker compose --profile app up -d --wait --wait-timeout 120 dashboard
-          curl -fsS http://localhost:8501/_stcore/health
+          curl -fsS http://127.0.0.1:8501/_stcore/health
 
       - name: Dump logs on failure
         if: failure()

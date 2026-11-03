@@ -44,13 +44,13 @@ transform:  ## dbt build: staging -> intermediate -> marts, with tests
 freshness:  ## warn/error when raw has not been loaded recently
 	docker compose run --rm --build dbt source freshness
 
-docs:  ## dbt docs (lineage, columns, tests) at http://localhost:8080 - Ctrl+C to stop
+docs:  ## dbt docs (lineage, columns, tests) at http://127.0.0.1:8080 - Ctrl+C to stop
 	docker compose --profile docs up --build dbt-docs
 
 train:  ## train the PD model out of time on the marts (as ml_reader); artifacts in the ml-artifacts volume
 	docker compose run --rm --build ml
 
-dashboard:  ## Streamlit at http://localhost:8501 (engineering, portfolio, risk simulation) - Ctrl+C to stop
+dashboard:  ## Streamlit at http://127.0.0.1:8501 (engineering, portfolio, risk simulation) - Ctrl+C to stop
 	docker compose --profile app up --build dashboard
 
 test:  ## run unit + integration tests locally (loader tests need `make up`)

@@ -21,10 +21,10 @@ BUCKET = "credit-risk-lake"
 
 INIT_SQL = Path(__file__).resolve().parents[2] / "infra" / "postgres" / "init.sql"
 # Defaults match .env.example and the compose Postgres; CI overrides it with its service container.
-ADMIN_DSN = os.environ.get(
-    "LOADER_TEST_PG_DSN",
-    "host=localhost port=5432 dbname=credit_risk_dw user=dw_admin password=change_me_dw_password",
+DEFAULT_ADMIN_DSN = (
+    "host=127.0.0.1 port=5432 dbname=credit_risk_dw user=dw_admin password=change_me_dw_password"
 )
+ADMIN_DSN = os.environ.get("LOADER_TEST_PG_DSN", DEFAULT_ADMIN_DSN)
 
 
 @pytest.fixture(scope="session")
