@@ -8,7 +8,7 @@ import pytest
 
 import ml.train as ml_train
 from ml.data import FEATURE_SOURCE, population_sql
-from ml.features import FEATURES, FORBIDDEN_COLUMNS, TARGET, feature_matrix
+from ml.features import EXCLUDED_ON_PURPOSE, FEATURES, FORBIDDEN_COLUMNS, TARGET, feature_matrix
 from ml.metrics import evaluate
 from ml.split import max_mature_contract_date, out_of_time_split
 from ml.train import train
@@ -49,11 +49,13 @@ def test_training_writes_every_artifact_and_a_usable_model(synthetic_population,
     assert report["models"]["logistic_regression"]["test"]["auc"] > 0.7
 
 
-def test_model_card_states_the_validation_and_the_numbers(synthetic_population, tmp_path):
+def test_model_card_states_the_validation_the_numbers_and_the_exclusions(synthetic_population, tmp_path):
     report = train(synthetic_population, tmp_path)
     card = (tmp_path / "model_card.md").read_text()
     assert "out of time" in card
     assert f"{report['models']['logistic_regression']['test']['auc']:.3f}" in card
+    missing = [column for column in sorted(EXCLUDED_ON_PURPOSE) if f"`{column}`" not in card]
+    assert not missing, f"excluded on purpose but not named in the model card: {missing}"
 
 
 def test_population_query_selects_only_allowlisted_columns():

@@ -25,9 +25,11 @@ from ml.data import load_population
 from ml.explain import odds_ratios, permutation_importances
 from ml.features import (
     CATEGORICAL_FEATURES,
+    EXCLUDED_ON_PURPOSE,
     FEATURES,
     FORBIDDEN_COLUMNS,
     NUMERIC_FEATURES,
+    PRICE_DEPENDENT_COLUMNS,
     REFERENCE_CATEGORIES,
     TARGET,
     feature_matrix,
@@ -189,6 +191,8 @@ def model_card(report: dict) -> str:
     products = "\n".join(row(product, m) for product, m in lr["test_by_product"].items())
     features = ", ".join(f"`{f}`" for f in report["features"])
     forbidden = ", ".join(f"`{f}`" for f in report["forbidden_columns"])
+    priced = ", ".join(f"`{c}`" for c in sorted(PRICE_DEPENDENT_COLUMNS))
+    proxies = ", ".join(f"`{c}`" for c in sorted(EXCLUDED_ON_PURPOSE - PRICE_DEPENDENT_COLUMNS))
     references = ", ".join(f"`{f}` = `{c}`" for f, c in REFERENCE_CATEGORIES.items())
     return f"""# Model card: probability of default (PD)
 
@@ -235,9 +239,9 @@ Categories are coded against a reference category ({references}); their odds rat
 "vs. the reference category".
 
 Never used (outcome, identifier or lineage columns): {forbidden}.
-Excluded on purpose: the contract rate, the installment and installment-based amounts (they embed the
-bank's risk-based price; affordability uses the installment at a fixed reference rate instead), and
-`email_domain`, `phone_area_code` and `state_code` (socio-economic / geographic proxies).
+Excluded on purpose, although known at the grant date: {priced} (they embed the bank's risk-based
+price; affordability uses the installment at a fixed reference rate instead) and {proxies}
+(socio-economic / geographic proxies).
 
 ## Limitations
 
