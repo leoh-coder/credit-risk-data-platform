@@ -126,7 +126,7 @@ contracts only.
     | Unknown customer | 2% | 5% |
     | Incomplete label window | 15% | 30% |
     | Quarantine per entity, rolling 7 loaded dates | 5% | 10% |
-  - failing rows stored in `audit`, source freshness on `_loaded_at`, and 5 dbt unit tests
+  - failing rows of the budget tests stored in `audit`, source freshness on `_loaded_at`, and 5 dbt unit tests
     (DPD and censoring branches, maturity boundaries, rolling quarantine window, reference-rate
     affordability, overdue amount).
 
