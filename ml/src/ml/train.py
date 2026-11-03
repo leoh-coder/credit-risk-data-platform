@@ -43,10 +43,10 @@ logger = logging.getLogger("ml")
 
 def _period(frame: pd.DataFrame) -> dict:
     dates = pd.to_datetime(frame["contract_date"])
-    return {"from": str(dates.min().date()), "to": str(dates.max().date()), **evaluate_counts(frame)}
+    return {"from": str(dates.min().date()), "to": str(dates.max().date()), **_counts(frame)}
 
 
-def evaluate_counts(frame: pd.DataFrame) -> dict:
+def _counts(frame: pd.DataFrame) -> dict:
     return {"rows": len(frame), "defaults": int(frame[TARGET].sum())}
 
 
@@ -83,7 +83,7 @@ def train(
     max_contract_date = max_mature_contract_date(observation_date)
     # After the limit only short products are mature: their mix would bias the rates, so they are reported.
     is_mature = pd.to_datetime(population["contract_date"]).dt.date <= max_contract_date
-    mature, excluded = population.loc[is_mature], evaluate_counts(population.loc[~is_mature])
+    mature, excluded = population.loc[is_mature], _counts(population.loc[~is_mature])
     logger.info(
         "excluded %d contracts (%d defaults) after the maturity limit %s",
         excluded["rows"],
@@ -160,14 +160,15 @@ def train(
     return report
 
 
-def simulation_defaults(X_train: pd.DataFrame) -> dict:
-    """Starting values for the dashboard's simulation form: training medians, modes and seen categories."""
+def simulation_defaults(X_final: pd.DataFrame) -> dict:
+    """Starting values for the dashboard's simulation form: medians, modes and seen categories of the rows
+    the final model is fit on (train + validation)."""
     return {
-        "numeric": {c: float(X_train[c].median()) for c in NUMERIC_FEATURES},
+        "numeric": {c: float(X_final[c].median()) for c in NUMERIC_FEATURES},
         "categorical": {
             c: {
-                "default": str(X_train[c].mode().iat[0]),
-                "options": sorted(map(str, X_train[c].dropna().unique())),
+                "default": str(X_final[c].mode().iat[0]),
+                "options": sorted(map(str, X_final[c].dropna().unique())),
             }
             for c in CATEGORICAL_FEATURES
         },
