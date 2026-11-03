@@ -15,6 +15,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+from sqlalchemy.exc import OperationalError
 
 from dashboard import queries
 from dashboard.config import get_settings
@@ -49,7 +50,7 @@ def model_artifacts():
 def guarded(name: str) -> pd.DataFrame | None:
     try:
         return load(name)
-    except Exception as exc:  # the page must explain, not crash, when the warehouse is down
+    except OperationalError as exc:  # warehouse unreachable: explain instead of crashing; bugs still raise
         st.error(f"Could not read `{name}` from the warehouse: {type(exc).__name__}. Is `make up` running?")
         return None
 

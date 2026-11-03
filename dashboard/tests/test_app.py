@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 import streamlit as st
+from sqlalchemy.exc import OperationalError, ProgrammingError
 from streamlit.testing.v1 import AppTest
 
 import dashboard.queries as queries
@@ -71,12 +72,27 @@ def test_artifacts_of_an_older_model_are_reported_instead_of_failing(app, monkey
 
 def test_a_warehouse_outage_is_reported_not_raised(app, monkeypatch):
     def down(name, url):
-        raise ConnectionError("connection refused")
+        raise OperationalError("select 1", None, Exception("connection refused"))
 
     monkeypatch.setattr(queries, "fetch", down)
     app.run()
     assert not app.exception
     assert any("Could not read" in e.value for e in app.error)
+
+
+@pytest.mark.parametrize(
+    "bug",
+    [ProgrammingError("select renamed_column", None, Exception("column does not exist")), KeyError("no_such_query")],
+    ids=["sql_error", "key_error"],
+)
+def test_a_programming_error_is_raised_not_reported_as_an_outage(app, monkeypatch, bug):
+    def broken(name, url):
+        raise bug
+
+    monkeypatch.setattr(queries, "fetch", broken)
+    app.run()
+    assert app.exception
+    assert not any("Could not read" in e.value for e in app.error)
 
 
 def dbt_freshness_hours(level: str) -> int:
