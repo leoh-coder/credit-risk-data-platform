@@ -47,6 +47,7 @@ def artifacts_dir(tmp_path_factory):
     logit = -1.8 - 0.008 * (frame["bureau_score_at_origination"] - 600)
     frame[TARGET] = (rng.random(n) < 1 / (1 + np.exp(-logit))).astype(int)
     frame["contract_date"] = pd.to_datetime("2024-07-01") + pd.to_timedelta(rng.integers(0, 382, n), unit="D")
+    frame["operation_id"] = [f"OPR{i:07d}" for i in range(n)]
     frame["observed_at"] = pd.Timestamp("2026-10-15 23:59:59")
     target = tmp_path_factory.mktemp("ml_artifacts")
     train(frame, target)
