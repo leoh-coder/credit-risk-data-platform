@@ -8,6 +8,7 @@ Reads the Gold layer only, as the read-only `dashboard_reader` role, plus the mo
 
 from __future__ import annotations
 
+import math
 from datetime import UTC, datetime
 
 import numpy as np
@@ -24,6 +25,7 @@ from dashboard.scoring import (
     TOP_RISK_BAND,
     applicant_frame,
     load_artifacts,
+    readable_input,
     risk_band,
     score,
     simulation_fields,
@@ -32,6 +34,7 @@ from ml.features import CATEGORICAL_FEATURES, REFERENCE_CATEGORIES
 
 FRESHNESS_WARN_HOURS, FRESHNESS_ERROR_HOURS = 48, 168  # same as dbt source freshness (tested)
 DPD_ORDER = ["1-30", "31-60", "61-89", "90+"]
+RAISES_PD, LOWERS_PD = "#c0392b", "#2e86c1"
 
 
 st.set_page_config(page_title="Credit Risk Data Platform", layout="wide")
@@ -157,9 +160,34 @@ def simulation_form(defaults: dict) -> dict:
 
 def contribution_chart(parts: pd.Series) -> go.Figure:
     terms = parts.drop("intercept").sort_values(key=np.abs)
-    colors = np.where(terms > 0, "#c0392b", "#2e86c1")
+    colors = np.where(terms > 0, RAISES_PD, LOWERS_PD)
     fig = go.Figure(go.Bar(x=terms.values, y=terms.index, orientation="h", marker_color=colors))
     fig.update_layout(xaxis_title="Contribution to log-odds (red raises PD, blue lowers it)", height=480)
+    return fig
+
+
+def odds_ratio_chart(coefficients: pd.DataFrame) -> go.Figure:
+    """Each odds ratio as a bar from 1 on a log axis, so its direction and size read at a glance."""
+    odds = coefficients.sort_values("odds_ratio")
+    labels = [readable_input(name, feature) for name, feature in zip(odds["input"], odds["feature"], strict=True)]
+    ratios = odds["odds_ratio"].to_numpy()
+    fig = go.Figure(
+        go.Bar(
+            x=ratios - 1,
+            base=1,
+            y=labels,
+            orientation="h",
+            marker_color=np.where(ratios > 1, RAISES_PD, LOWERS_PD),
+            customdata=ratios,
+            hovertemplate="%{y}: %{customdata:.2f}<extra></extra>",
+        )
+    )
+    low = math.floor(math.log2(min(ratios.min(), 1.0)))
+    high = math.ceil(math.log2(max(ratios.max(), 1.0)))
+    ticks = [2.0**power for power in range(low, high + 1)]
+    fig.add_vline(x=1, line_color="#7f8c8d")
+    fig.update_xaxes(type="log", tickvals=ticks, ticktext=[f"{tick:g}" for tick in ticks])
+    fig.update_layout(xaxis_title="Odds ratio, log scale (red raises PD, blue lowers it)", height=520)
     return fig
 
 
@@ -226,9 +254,8 @@ def risk_tab() -> None:
 
     references = ", ".join(f"{f} = {c}" for f, c in REFERENCE_CATEGORIES.items())
     st.subheader("Odds ratios (per +1 SD; a category vs. the reference category)")
-    st.caption(f"Reference categories: {references}.")
-    odds = artifacts.coefficients.reindex(artifacts.coefficients["coefficient"].abs().sort_values().index)
-    st.plotly_chart(px.bar(odds, x="odds_ratio", y="input", orientation="h", log_x=True), width="stretch")
+    st.caption(f"Reference categories: {references}. Money inputs enter the model as log(1 + amount).")
+    st.plotly_chart(odds_ratio_chart(artifacts.coefficients), width="stretch")
 
 
 st.title("Credit Risk Data Platform")
