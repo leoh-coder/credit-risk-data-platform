@@ -91,6 +91,12 @@ def test_derived_features_are_computed_from_typed_fields():
         assert set(inputs) <= typed
 
 
+def test_the_income_field_never_reaches_zero():
+    # zero income leaves the reference affordability ratio undefined: shown as "nan%", imputed by the model
+    income = next(field for field in simulation_fields() if field.feature == "monthly_income")
+    assert income.min_value > 0
+
+
 def test_field_metadata_has_no_stale_entries():
     assert set(FIELD_META) <= set(NUMERIC_FEATURES) - set(DERIVED_FEATURES)
 

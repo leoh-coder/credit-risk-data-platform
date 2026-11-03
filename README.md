@@ -154,11 +154,13 @@ refit on train + validation and scored once on the test period.
 | Model | Train AUC | Validation AUC | Test AUC | Test Gini | Test KS | Test Brier | Test mean PD vs. observed |
 |---|---|---|---|---|---|---|---|
 | Logistic regression (C = 1.0) | 0.824 | 0.830 | 0.828 | 0.656 | 0.519 | 0.0813 | 0.110 vs. 0.116 |
-| HistGradientBoosting (depth 2, leaf 200) | 0.837 | 0.832 | 0.825 | 0.650 | 0.509 | 0.0823 | 0.110 vs. 0.116 |
+| HistGradientBoosting (depth 2, leaf 200) | 0.840 | 0.832 | 0.825 | 0.650 | 0.518 | 0.0825 | 0.110 vs. 0.116 |
 
 On the test period the largest gap between predicted and observed default rate across PD deciles
-is 0.036 for the logistic model and 0.044 for the boosting model. The logistic model stays the main
-one: slightly better discrimination and calibration, and an exact explanation per applicant.
+is 0.036 for the logistic model and 0.060 for the boosting model. The logistic model was chosen in
+advance for interpretability (odds ratios and an exact explanation per applicant). The boosting model
+is marginally ahead on validation and marginally behind on test; the difference is within noise and
+does not pay for the loss of auditability.
 
 ## Running locally
 
@@ -202,9 +204,9 @@ pip install -r ingestion/requirements-dev.txt -r loader/requirements-dev.txt \
 make test lint
 ```
 
-pytest runs 28 tests in `ingestion` (including the S3 path against moto), 23 in `loader` (real
-Postgres, a throwaway database per test; skipped locally without Postgres, never in CI), 73 in
-`ml` and 41 in `dashboard` (including the whole app run headless with `AppTest`). CI runs ruff and
+pytest runs 29 tests in `ingestion` (including the S3 path against moto), 23 in `loader` (real
+Postgres, a throwaway database per test; skipped locally without Postgres, never in CI), 48 in
+`ml` and 42 in `dashboard` (including the whole app run headless with `AppTest`). CI runs ruff and
 pytest per package, then a Compose smoke run: a 3-day backfill, load, incremental no-op,
 `dbt build`, freshness, the docs artifact, grants and login roles, the ML population query as
 `ml_reader`, every dashboard query as `dashboard_reader`, and the dashboard health check. The model

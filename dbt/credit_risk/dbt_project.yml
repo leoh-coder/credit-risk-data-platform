@@ -33,8 +33,8 @@ vars:
 
 data_tests:
   credit_risk:
-    # Only the data-quality budget tests set store_failures; their offending rows land in this schema.
-    # Not global: a failing no_pii_patterns test would copy the PII it found into audit.
+    # Only the data-quality budget tests set store_failures: their offending rows are the ones worth
+    # inspecting. Set globally, it left about a hundred empty tables in audit.
     +schema: audit
 
 models:

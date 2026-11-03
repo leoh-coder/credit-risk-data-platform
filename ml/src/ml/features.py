@@ -1,6 +1,6 @@
 """Feature allowlist: the only columns the model may use, all known at the grant date.
 
-`check_feature_list` rejects forbidden (outcome, key, lineage) and non-allowlisted columns; see
+Tests keep the forbidden (outcome, key, lineage) and the deliberately excluded columns out of it; see
 docs/DECISIONS.md (D22, D23).
 """
 
@@ -100,20 +100,6 @@ def reference_installment_to_income_ratio(
     if not monthly_income or monthly_income <= 0:
         return np.nan
     return principal * rate / (1 - (1 + rate) ** -installments) / monthly_income
-
-
-class LeakageError(ValueError):
-    """A feature list contains a forbidden or non-allowlisted column."""
-
-
-def check_feature_list(columns) -> None:
-    columns = list(columns)
-    forbidden = sorted(set(columns) & FORBIDDEN_COLUMNS)
-    if forbidden:
-        raise LeakageError(f"forbidden columns in the feature set: {forbidden}")
-    unknown = sorted(set(columns) - set(FEATURES))
-    if unknown:
-        raise LeakageError(f"columns not in the allowlist: {unknown} (edit ml/features.py deliberately)")
 
 
 def feature_matrix(frame: pd.DataFrame) -> pd.DataFrame:

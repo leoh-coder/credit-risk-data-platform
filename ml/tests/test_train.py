@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 
 import joblib
@@ -7,7 +8,7 @@ import pytest
 
 import ml.train as ml_train
 from ml.data import FEATURE_SOURCE, population_sql
-from ml.features import FEATURES, FORBIDDEN_COLUMNS, TARGET, feature_matrix
+from ml.features import EXCLUDED_ON_PURPOSE, FEATURES, FORBIDDEN_COLUMNS, TARGET, feature_matrix
 from ml.metrics import evaluate
 from ml.split import max_mature_contract_date, out_of_time_split
 from ml.train import train
@@ -48,11 +49,13 @@ def test_training_writes_every_artifact_and_a_usable_model(synthetic_population,
     assert report["models"]["logistic_regression"]["test"]["auc"] > 0.7
 
 
-def test_model_card_states_the_validation_and_the_numbers(synthetic_population, tmp_path):
+def test_model_card_states_the_validation_the_numbers_and_the_exclusions(synthetic_population, tmp_path):
     report = train(synthetic_population, tmp_path)
     card = (tmp_path / "model_card.md").read_text()
     assert "out of time" in card
     assert f"{report['models']['logistic_regression']['test']['auc']:.3f}" in card
+    missing = [column for column in sorted(EXCLUDED_ON_PURPOSE) if f"`{column}`" not in card]
+    assert not missing, f"excluded on purpose but not named in the model card: {missing}"
 
 
 def test_population_query_selects_only_allowlisted_columns():
@@ -74,14 +77,23 @@ def test_calibration_artifact_has_ten_bins(synthetic_population, tmp_path):
     assert len(pd.read_csv(tmp_path / "calibration.csv")) == 10
 
 
-def test_contracts_after_the_maturity_limit_never_reach_training(synthetic_population, tmp_path):
+def test_contracts_after_the_maturity_limit_are_excluded_and_reported(synthetic_population, tmp_path, caplog):
     late = synthetic_population.head(50).assign(contract_date=pd.Timestamp("2025-09-01"), operation_id="late")
-    report = train(pd.concat([synthetic_population, late], ignore_index=True), tmp_path)
+    late_defaults = int(late[TARGET].sum())
+    with caplog.at_level(logging.INFO, logger="ml"):
+        report = train(pd.concat([synthetic_population, late], ignore_index=True), tmp_path)
 
     assert report["split"]["max_contract_date"] == "2025-07-17"
     assert report["split"]["test"]["to"] <= "2025-07-17"
     periods = ("train", "validation", "test")
     assert sum(report["split"][p]["rows"] for p in periods) == len(synthetic_population)
+
+    excluded = {"rows": 50, "defaults": late_defaults}
+    assert report["split"]["excluded_after_maturity_limit"] == excluded
+    stored = json.loads((tmp_path / "metrics.json").read_text())
+    assert stored["split"]["excluded_after_maturity_limit"] == excluded
+    assert f"50 contracts ({late_defaults} defaults)" in (tmp_path / "model_card.md").read_text()
+    assert f"excluded 50 contracts ({late_defaults} defaults) after the maturity limit" in caplog.text
 
 
 def _periods(population):
@@ -122,6 +134,14 @@ def test_final_model_is_refit_on_train_and_validation_and_scored_once_on_test(sy
     assert {"train", "validation", "test"} <= set(report["split"]) and {"train", "validation", "test"} <= set(
         logistic
     )
+
+
+def test_the_order_of_the_population_rows_does_not_change_the_models(synthetic_population, tmp_path):
+    # The warehouse returns rows in no fixed order; boosting's early stopping splits them by position.
+    shuffled = synthetic_population.sample(frac=1, random_state=1)
+    as_given = train(synthetic_population, tmp_path / "as_given")
+    reordered = train(shuffled, tmp_path / "shuffled")
+    assert reordered["models"] == as_given["models"]
 
 
 @pytest.mark.parametrize("model", ["logistic_regression", "hist_gradient_boosting"])

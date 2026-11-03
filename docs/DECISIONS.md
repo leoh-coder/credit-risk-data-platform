@@ -63,7 +63,7 @@ chosen otherwise, the entry also names that alternative and why it was not taken
 - **Rejected:** inner joins, which silently shrink the facts.
 
 ### D15. PII masked in staging
-- **Why:** the e-mail is reduced to its domain, the phone to its area code, and the name is dropped. The CPF becomes SHA-256 of a secret (`DBT_PII_SALT`, in effect a pepper) followed by the CPF digits. The CPF space is small (~10^9), so the protection depends on the secret not leaking: anyone who holds it can brute-force every CPF in minutes. In production this would be HMAC-SHA256 with the key in a secrets manager. The customers staging model is a table so the secret never appears in a view definition.
+- **Why:** the e-mail is reduced to its domain, the phone to its area code, and the name is dropped. The CPF becomes SHA-256 of a secret (`DBT_PII_SALT`, in effect a pepper) followed by the CPF digits. The CPF space is small (~10^9), so the protection depends on the secret not leaking: anyone who holds it can brute-force every CPF in minutes. The customers staging model is a table so the secret never appears in a view definition. The `target/` folder of a real dbt run keeps the compiled SQL with the secret (local, outside git), the docs service compiles with a placeholder value instead, and in production the hash would run in the database (HMAC with the key held by the server), with no secret in the SQL.
 - **Rejected:** encryption (reversible, needs key management) and masking in the marts (PII would already sit in Silver).
 
 ### D16. Two facts sharing the dimensions
@@ -86,15 +86,15 @@ chosen otherwise, the entry also names that alternative and why it was not taken
   - incomplete label window: warn > 15% (10.7% observed with a 1% dirty rate), error > 30%;
   - quarantine per entity: warn > 5%, error > 10%, on a rolling window of the last 7 loaded dates (`ROWS BETWEEN 6 PRECEDING AND CURRENT ROW`), evaluated once the window holds 7 dates. `dq_ingestion_daily` computes the flags, so the dbt tests and the dashboard read the same rule.
 
-  Only these budget tests store their failing rows in `audit`; stored failures for every test would copy whatever the PII scan found into that schema.
+  Only these budget tests store their failing rows in `audit`, because those are the rows worth inspecting; set globally, `store_failures` left about a hundred empty tables there.
 - **Rejected:** pass/fail checks (ignored once they flap) and a daily quarantine rate (pure noise on ~30-row batches).
 
 ## Model
 
 ### D21. Out-of-time train / validation / test on mature cohorts only
 - **Why:**
-  - **Maturity limit from the data.** The last contract date mature for every product is computed from the observation clock (`min(observed_at)` of the facts): observation - 90 days - 12 months, the same parameters as the dbt label (tested against the dbt vars). For the current data that is 2025-07-17. Later contracts raise instead of being dropped silently.
-  - **Three periods.** Test = the last `test_months` (3) before the limit, validation = the `validation_months` (3) before the test, train = everything earlier. Both sizes are parameters.
+  - **Maturity limit from the data.** The last contract date mature for every product is computed from the observation clock (`min(observed_at)` of the facts): observation - 90 days - 12 months, the same parameters as the dbt label (tested against the dbt vars). For the current data that is 2025-07-17. Later contracts are excluded and reported in `metrics.json` and the model card (883 contracts with 201 defaults), because after the limit only short products are mature and their mix would bias the rates; the split refuses any it receives.
+  - **Three periods.** Test = the last `test_months` (3) before the limit, validation = the `validation_months` (3) before the test, train = everything earlier. Both sizes are parameters. The population is sorted by contract id before the split, because the internal validation of the boosting model's early stopping depends on row order; training is then reproducible even after the marts are rebuilt.
   - **One look at the test.** Hyperparameters, feature-exclusion evidence and permutation importance use the validation period only. The chosen models are refit on train + validation and scored once on the test period. An earlier version tuned the comparison model and judged features on the test period, which made its metrics optimistic.
 - **Rejected:** a random split (leaks the future into training and hides drift) and a single train/test split used for tuning.
 
@@ -111,8 +111,8 @@ chosen otherwise, the entry also names that alternative and why it was not taken
 - **Rejected:** using the contract rate as a feature because it is known at the grant date.
 
 ### D24. Logistic regression as the main model, one comparison model
-- **Why:** the standard in credit scoring: odds ratios and an exact per-applicant decomposition of the log-odds. Both models are tuned on the validation period (logistic C in {0.1, 1, 10}; boosting depth/leaf in {2/200, 3/100, 4/50}). Out of time the logistic model (test AUC 0.828, KS 0.519) slightly beats the boosting model (0.825, KS 0.509), with better calibration (largest decile gap 0.036 vs 0.044) and a smaller train/test gap.
-- **Rejected:** shipping the boosting model, which gains nothing here and is harder to audit.
+- **Why:** chosen in advance for interpretability, the standard in credit scoring: odds ratios and an exact per-applicant decomposition of the log-odds. Both models are tuned on the validation period (logistic C in {0.1, 1, 10}; boosting depth/leaf in {2/200, 3/100, 4/50}). On validation the boosting model is marginally ahead (AUC 0.832 vs 0.830, KS 0.511 vs 0.500) and on test marginally behind (AUC 0.825 vs 0.828, KS 0.518 vs 0.519); the difference is within noise and does not pay for the loss of auditability.
+- **Rejected:** shipping the boosting model, which is harder to audit for no measurable gain.
 
 ### D25. Explicit reference categories in the one-hot encoding
 - **Why:** with every level one-hot encoded next to an intercept, category coefficients are not identifiable on their own (L2 only centres them), so an odds ratio per category would mean nothing precise. Each categorical feature drops a declared reference level, `product_type = personal_loan` (largest and riskiest product) and `employment_type = clt` (most common), and its odds ratios read "vs. the reference category". A reference applicant's categorical contribution is exactly zero.
@@ -124,7 +124,7 @@ chosen otherwise, the entry also names that alternative and why it was not taken
 ## Consumption
 
 ### D27. Read-only login roles per consumer
-- **Why:** `ml_reader` and `dashboard_reader` inherit only `analytics_reader`, which has SELECT on `marts` only; those grants are the protection. Their sessions also default to read-only (`default_transaction_read_only`), an extra guard that the session itself can turn off. Passwords come from `.env`, and the model and dashboard containers never receive the admin credentials.
+- **Why:** `ml_reader` and `dashboard_reader` inherit only `analytics_reader`, which has SELECT on `marts` only; those grants are the protection. Their sessions also default to read-only (`default_transaction_read_only`), an extra guard that the session itself can turn off. Passwords come from `.env`, and the model and dashboard containers never receive the admin credentials. The jobs are not least-privilege in this demo: the loader and dbt connect as the Postgres superuser; in production they would use a pipeline role without superuser rights, and the loader a read-only key for the lake.
 
 ### D28. The dashboard reads marts only
 - **Why:** pipeline health is exposed through `dq_pipeline_loads` and `dq_ingestion_daily`, so the dashboard never reads `audit`, `raw` or staging; a test fails if a dashboard query references anything outside `marts`.

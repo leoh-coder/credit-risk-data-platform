@@ -1,4 +1,5 @@
 import hashlib
+import json
 
 import duckdb
 import pytest
@@ -6,6 +7,15 @@ import pytest
 from loader.lake import ENTITIES, Lake, LoadError
 from loader.sql import quote_literal
 from tests.conftest import BUCKET, DAY_1, DAY_2, edit_manifest, manifest_file
+
+# Every entity is listed, so validation reaches the row counts: one of them is a string.
+STRING_ROW_COUNT = json.dumps(
+    {
+        "batch_id": "b",
+        "contract_version": "1",
+        "entities": {entity: {"rows_valid": "10" if entity == "customers" else 10} for entity in ENTITIES},
+    }
+)
 
 
 @pytest.fixture
@@ -48,17 +58,17 @@ def test_manifest_entities_must_be_exactly_the_allow_listed_ones(lake, lake_path
 
 
 @pytest.mark.parametrize(
-    "content",
+    ("content", "reason"),
     [
-        "{not json",
-        "[]",
-        '{"batch_id": "b", "contract_version": "1"}',
-        '{"batch_id": "b", "contract_version": "1", "entities": {"customers": {"rows_valid": "10"}}}',
+        ("{not json", "not valid JSON"),
+        ("[]", "no entities object"),
+        ('{"batch_id": "b", "contract_version": "1"}', "no entities object"),
+        (STRING_ROW_COUNT, "rows_valid is not a row count"),
     ],
 )
-def test_malformed_manifest_raises_a_load_error(lake, lake_path, content):
+def test_malformed_manifest_raises_a_load_error(lake, lake_path, content, reason):
     manifest_file(lake_path, DAY_1).write_text(content)
-    with pytest.raises(LoadError):
+    with pytest.raises(LoadError, match=reason):
         lake.read_manifest(DAY_1)
 
 

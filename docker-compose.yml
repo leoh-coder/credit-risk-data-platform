@@ -88,6 +88,7 @@ services:
       SEED: ${SEED:-42}
       CUSTOMERS_PER_BATCH: ${CUSTOMERS_PER_BATCH:-30}
       DIRTY_RATE: ${DIRTY_RATE:-0.01}
+      HISTORY_DAYS: ${HISTORY_DAYS:-90}
     depends_on:
       seaweedfs:
         condition: service_healthy
@@ -124,7 +125,8 @@ services:
     profiles: ["docs"]
     environment:
       <<: *warehouse-env
-      DBT_PII_SALT: ${DBT_PII_SALT:?set DBT_PII_SALT in .env}
+      # The docs compile the CPF hash but never run it; the real secret would be served in manifest.json.
+      DBT_PII_SALT: docs-placeholder-not-the-real-salt
     entrypoint: ["/bin/sh", "-c"]
     command: ["dbt docs generate && exec dbt docs serve --host 0.0.0.0 --port 8080 --no-browser"]
     ports:

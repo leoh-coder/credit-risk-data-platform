@@ -25,9 +25,11 @@ from ml.data import load_population
 from ml.explain import odds_ratios, permutation_importances
 from ml.features import (
     CATEGORICAL_FEATURES,
+    EXCLUDED_ON_PURPOSE,
     FEATURES,
     FORBIDDEN_COLUMNS,
     NUMERIC_FEATURES,
+    PRICE_DEPENDENT_COLUMNS,
     REFERENCE_CATEGORIES,
     TARGET,
     feature_matrix,
@@ -41,10 +43,10 @@ logger = logging.getLogger("ml")
 
 def _period(frame: pd.DataFrame) -> dict:
     dates = pd.to_datetime(frame["contract_date"])
-    return {"from": str(dates.min().date()), "to": str(dates.max().date()), **evaluate_counts(frame)}
+    return {"from": str(dates.min().date()), "to": str(dates.max().date()), **_counts(frame)}
 
 
-def evaluate_counts(frame: pd.DataFrame) -> dict:
+def _counts(frame: pd.DataFrame) -> dict:
     return {"rows": len(frame), "defaults": int(frame[TARGET].sum())}
 
 
@@ -77,9 +79,19 @@ def _max_decile_gap(y, pd_hat) -> float:
 def train(
     population: pd.DataFrame, artifacts_dir: Path, validation_months: int = 3, test_months: int = 3
 ) -> dict:
+    # The warehouse returns rows in no fixed order, and boosting's early stopping splits them by position.
+    population = population.sort_values("operation_id", kind="stable")
     observation_date = pd.to_datetime(population["observed_at"]).min().date()
     max_contract_date = max_mature_contract_date(observation_date)
-    mature = population.loc[pd.to_datetime(population["contract_date"]).dt.date <= max_contract_date]
+    # After the limit only short products are mature: their mix would bias the rates, so they are reported.
+    is_mature = pd.to_datetime(population["contract_date"]).dt.date <= max_contract_date
+    mature, excluded = population.loc[is_mature], _counts(population.loc[~is_mature])
+    logger.info(
+        "excluded %d contracts (%d defaults) after the maturity limit %s",
+        excluded["rows"],
+        excluded["defaults"],
+        max_contract_date,
+    )
     train_df, validation_df, test_df = out_of_time_split(
         mature, max_contract_date, validation_months=validation_months, test_months=test_months
     )
@@ -123,6 +135,7 @@ def train(
             "type": "out_of_time",
             "observation_date": str(observation_date),
             "max_contract_date": str(max_contract_date),
+            "excluded_after_maturity_limit": excluded,
             "validation_months": validation_months,
             "test_months": test_months,
             "train": _period(train_df),
@@ -149,14 +162,15 @@ def train(
     return report
 
 
-def simulation_defaults(X_train: pd.DataFrame) -> dict:
-    """Starting values for the dashboard's simulation form: training medians, modes and seen categories."""
+def simulation_defaults(X_final: pd.DataFrame) -> dict:
+    """Starting values for the dashboard's simulation form: medians, modes and seen categories of the rows
+    the final model is fit on (train + validation)."""
     return {
-        "numeric": {c: float(X_train[c].median()) for c in NUMERIC_FEATURES},
+        "numeric": {c: float(X_final[c].median()) for c in NUMERIC_FEATURES},
         "categorical": {
             c: {
-                "default": str(X_train[c].mode().iat[0]),
-                "options": sorted(map(str, X_train[c].dropna().unique())),
+                "default": str(X_final[c].mode().iat[0]),
+                "options": sorted(map(str, X_final[c].dropna().unique())),
             }
             for c in CATEGORICAL_FEATURES
         },
@@ -175,9 +189,13 @@ def model_card(report: dict) -> str:
     def period(p):
         return f"{p['from']} .. {p['to']} ({p['rows']} contracts, {p['defaults']} defaults)"
 
+    excluded = split["excluded_after_maturity_limit"]
+    late = f"{excluded['rows']} contracts ({excluded['defaults']} defaults)"
     products = "\n".join(row(product, m) for product, m in lr["test_by_product"].items())
     features = ", ".join(f"`{f}`" for f in report["features"])
     forbidden = ", ".join(f"`{f}`" for f in report["forbidden_columns"])
+    priced = ", ".join(f"`{c}`" for c in sorted(PRICE_DEPENDENT_COLUMNS))
+    proxies = ", ".join(f"`{c}`" for c in sorted(EXCLUDED_ON_PURPOSE - PRICE_DEPENDENT_COLUMNS))
     references = ", ".join(f"`{f}` = `{c}`" for f, c in REFERENCE_CATEGORIES.items())
     return f"""# Model card: probability of default (PD)
 
@@ -188,12 +206,13 @@ def model_card(report: dict) -> str:
   - Train: {period(split["train"])}.
   - Validation: {period(split["validation"])}.
   - Test: {period(split["test"])}.
-  - Observation clock {split["observation_date"]}: contracts after {split["max_contract_date"]} are excluded,
-    because not every product is mature after that date.
+  - Observation clock {split["observation_date"]}: the {late} after {split["max_contract_date"]} are
+    excluded and reported, because after that date only short products are mature and their mix would
+    bias the rates.
 - **Selection:** hyperparameters and permutation importance use the validation period only. The chosen
   models are refit on train + validation and scored once on the test period.
-- **Main model:** logistic regression (scorecard standard), {lr["params"]}. Comparison: HistGradientBoosting,
-  {hgb["params"]}.
+- **Main model:** logistic regression (the standard in credit scoring), {lr["params"]}. Comparison:
+  HistGradientBoosting, {hgb["params"]}.
 
 ## Metrics
 
@@ -223,9 +242,9 @@ Categories are coded against a reference category ({references}); their odds rat
 "vs. the reference category".
 
 Never used (outcome, identifier or lineage columns): {forbidden}.
-Excluded on purpose: the contract rate, the installment and installment-based amounts (they embed the
-bank's risk-based price; affordability uses the installment at a fixed reference rate instead), and
-`email_domain`, `phone_area_code` and `state_code` (socio-economic / geographic proxies).
+Excluded on purpose, although known at the grant date: {priced} (they embed the bank's risk-based
+price; affordability uses the installment at a fixed reference rate instead) and {proxies}
+(socio-economic / geographic proxies).
 
 ## Limitations
 

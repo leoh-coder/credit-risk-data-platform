@@ -16,8 +16,6 @@ from ml.features import (
     REFERENCE_CATEGORIES,
     REFERENCE_RATE_MONTHLY,
     TARGET,
-    LeakageError,
-    check_feature_list,
     feature_matrix,
     reference_installment_to_income_ratio,
 )
@@ -43,7 +41,11 @@ def test_outcome_columns_are_all_forbidden():
 def test_allowlist_and_forbidden_list_do_not_overlap():
     assert not set(FEATURES) & FORBIDDEN_COLUMNS
     assert TARGET not in FEATURES
-    check_feature_list(FEATURES)  # the allowlist itself passes the leakage check
+
+
+def test_deliberately_excluded_columns_never_enter_the_model():
+    # pricing feedback loop or socio-economic / geographic proxy (docs/DECISIONS.md, D23)
+    assert not set(FEATURES) & EXCLUDED_ON_PURPOSE
 
 
 def test_allowlist_is_partitioned_into_numeric_and_categorical():
@@ -51,20 +53,6 @@ def test_allowlist_is_partitioned_into_numeric_and_categorical():
     assert not set(NUMERIC_FEATURES) & set(CATEGORICAL_FEATURES)
     assert set(MONEY_FEATURES) <= set(NUMERIC_FEATURES)
     assert len(FEATURES) == len(set(FEATURES))
-
-
-@pytest.mark.parametrize("column", sorted(FORBIDDEN_COLUMNS))
-def test_any_forbidden_column_in_a_feature_list_raises(column):
-    with pytest.raises(LeakageError, match=column):
-        check_feature_list([*FEATURES, column])
-
-
-@pytest.mark.parametrize("column", sorted(EXCLUDED_ON_PURPOSE))
-def test_deliberately_excluded_columns_never_enter_the_model(column):
-    # pricing feedback loop or socio-economic / geographic proxy (docs/DECISIONS.md, D23)
-    assert column not in FEATURES
-    with pytest.raises(LeakageError, match="not in the allowlist"):
-        check_feature_list([*FEATURES, column])
 
 
 def test_feature_matrix_keeps_exactly_the_allowlist_and_drops_everything_else():

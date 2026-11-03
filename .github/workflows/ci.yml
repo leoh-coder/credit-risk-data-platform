@@ -64,6 +64,24 @@ jobs:
       - name: Pytest
         run: python -m pytest -q
 
+  # The README installs every dev requirement list into one environment, so pip must find one solution.
+  dev-requirements:
+    name: Dev requirements resolve together
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Resolve the four dev requirement lists in one environment
+        run: >-
+          pip install --dry-run --ignore-installed
+          -r ingestion/requirements-dev.txt -r loader/requirements-dev.txt
+          -r ml/requirements-dev.txt -r dashboard/requirements-dev.txt
+
   compose-smoke:
     name: Compose smoke run (backfill, load, dbt build, freshness, docs, roles, dashboard)
     needs: lint-test
