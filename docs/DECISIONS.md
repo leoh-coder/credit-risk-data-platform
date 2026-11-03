@@ -28,7 +28,7 @@ Each entry: the decision, why, and the alternative that was rejected.
 - **Rejected:** validating only in dbt (bad rows already landed), and a ratio-only breaker (permanently rejected 2% of dates on small batches).
 
 ### D06. Lake layout with a manifest as the commit marker
-- **Why:** `raw|quarantine/<entity>/reference_date=YYYY-MM-DD/part-0.parquet`; each run replaces its own partitions (idempotent). The manifest is deleted first (only after validation passes, so a rejected rerun keeps the previous commit) and written last, so a reader never pairs an old manifest with half-written files.
+- **Why:** `raw|quarantine/<entity>/reference_date=YYYY-MM-DD/part-0.parquet` (zstd), plus `_manifests/reference_date=YYYY-MM-DD/manifest.json` with row counts, contract and generator versions and run duration; each run replaces its own partitions (idempotent). The manifest is deleted first (only after validation passes, so a rejected rerun keeps the previous commit) and written last, so a reader never pairs an old manifest with half-written files.
 - **Rejected:** appending files per run (duplicates on rerun) or a separate catalog service (more infrastructure for the same guarantee).
 
 ### D07. Lineage columns on every raw row
@@ -60,7 +60,7 @@ Each entry: the decision, why, and the alternative that was rejected.
 ## Warehouse (dbt)
 
 ### D13. Medallion layers mapped to schemas
-- **Why:** Bronze = lake + `raw`; Silver = dbt `stg_` + `int_` (typing, joins, business rules, PII masking); Gold = `marts` as a star schema. One schema per layer gives clear ownership and least privilege.
+- **Why:** Bronze = lake + `raw`; Silver = dbt `stg_` + `int_` (typing, joins, business rules, PII masking); Gold = `marts` as a star schema. Staging (`stg_core_banking__*`, `stg_open_finance__transactions`) and intermediate (`int_installments__delinquency`, `int_credit_operations__performance`, `int_customers__open_finance_features`) are views; the marts are tables. One schema per layer gives clear ownership and least privilege.
 - **Rejected:** a single schema, where every consumer can read unmasked data.
 
 ### D14. Unknown member (`'-1'`) instead of dropping orphans
@@ -84,7 +84,7 @@ Each entry: the decision, why, and the alternative that was rejected.
 - **Rejected:** claiming full portability without running on another adapter.
 
 ### D19. Contracts at both ends
-- **Why:** Pandera guards the lake and enforced dbt model contracts guard the Gold interface (types, primary keys, `NOT NULL`), so drift fails the build instead of reaching a consumer.
+- **Why:** Pandera guards the lake and enforced dbt model contracts guard the Gold interface (types, primary keys, `NOT NULL`), so drift fails the build instead of reaching a consumer. Data tests add domains, ranges, row invariants and composite keys, and singular tests reconcile lake, `raw` and facts, check installment schedules against their contracts, and reject Open Finance data dated on or after the application.
 - **Rejected:** schema tests only, which detect drift after the table is already built.
 
 ### D20. Data-quality budgets with warn and error levels
