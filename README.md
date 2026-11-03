@@ -213,8 +213,17 @@ is not trained in CI, because 3 days have no contract old enough to train on.
 ## Limitations
 
 - The data is synthetic.
-- The warehouse SQL still contains Postgres-specific constructs (see [docs/PORTABILITY.md](docs/PORTABILITY.md)).
-- Vehicle financing PD is under-predicted on the most recent test cohorts.
+- In daily mode (`make ingest`, `as_of` = today) no label ever matures. Installments and payments
+  are emitted only in the batch of the contract's origination date and observed up to that batch's
+  `as_of`; the labels exist because the backfill uses a fixed `as_of`. A real bank would read a daily
+  payments feed (or snapshot the collections system with dbt snapshots) and recompute delinquency
+  incrementally.
+- The contracts reject added or missing columns, but `coerce=True` lets compatible type drift
+  through (the string `"123.4"` becomes a float).
+- Freshness is measured against the current clock, so in a copy that stops loading the Engineering
+  tab turns WARN after 2 days and ERROR after 7. That is the intended behavior.
+- The SQL is Postgres-specific in places ([docs/PORTABILITY.md](docs/PORTABILITY.md)).
+- Vehicle financing PD is under-predicted on the test period: mean PD 0.071 against 0.096 observed.
 
 ## Further reading
 
