@@ -111,7 +111,7 @@ chosen otherwise, the entry also names that alternative and why it was not taken
 - **Rejected:** using the contract rate as a feature because it is known at the grant date.
 
 ### D24. Logistic regression as the main model, one comparison model
-- **Why:** chosen in advance for interpretability, the standard in credit scoring: odds ratios and an exact per-applicant decomposition of the log-odds. Both models are tuned on the validation period (logistic C in {0.1, 1, 10}; boosting depth/leaf in {2/200, 3/100, 4/50}). On validation the boosting model is marginally ahead (AUC 0.832 vs 0.830, KS 0.519 vs 0.500) and on test marginally behind (AUC 0.825 vs 0.828); the difference is within noise and does not pay for the loss of auditability.
+- **Why:** chosen in advance for interpretability, the standard in credit scoring: odds ratios and an exact per-applicant decomposition of the log-odds. Both models are tuned on the validation period (logistic C in {0.1, 1, 10}; boosting depth/leaf in {2/200, 3/100, 4/50}). On validation the boosting model is marginally ahead (AUC 0.832 vs 0.830, KS 0.511 vs 0.500) and on test marginally behind (AUC 0.825 vs 0.828, KS 0.518 vs 0.519); the difference is within noise and does not pay for the loss of auditability.
 - **Rejected:** shipping the boosting model, which is harder to audit for no measurable gain.
 
 ### D25. Explicit reference categories in the one-hot encoding
