@@ -32,7 +32,7 @@ FIELD_META: dict[str, tuple[str, float, float, float]] = {
     "installments_count": ("Installments", 1, 120, 1),
     "bureau_score_at_origination": ("Bureau score", 0, 1000, 10),
     "age_at_registration": ("Age", 18, 100, 1),
-    "monthly_income": ("Monthly income (BRL)", 0.0, 200_000.0, 100.0),
+    "monthly_income": ("Monthly income (BRL)", 100.0, 200_000.0, 100.0),
     "of_tx_count": ("Open Finance transactions (90 d)", 0, 2000, 1),
     "of_salary_deposit_count": ("Salary deposits (90 d)", 0, 20, 1),
     "of_monthly_inflow": ("Monthly inflow (BRL)", 0.0, 500_000.0, 100.0),
@@ -99,7 +99,7 @@ def applicant_frame(values: dict) -> pd.DataFrame:
     """One applicant as the model expects it; derived features are computed as in fct_credit_operations."""
     row = dict(values)
     row["reference_installment_to_income_ratio"] = reference_installment_to_income_ratio(
-        row["principal_amount"], row["installments_count"], row.get("monthly_income") or 0
+        row["principal_amount"], row["installments_count"], row["monthly_income"]
     )
     return feature_matrix(pd.DataFrame([row]))
 
