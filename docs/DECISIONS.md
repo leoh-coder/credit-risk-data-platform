@@ -63,7 +63,7 @@ chosen otherwise, the entry also names that alternative and why it was not taken
 - **Rejected:** inner joins, which silently shrink the facts.
 
 ### D15. PII masked in staging
-- **Why:** the e-mail is reduced to its domain, the phone to its area code, and the name is dropped. The CPF becomes SHA-256 of a secret (`DBT_PII_SALT`, in effect a pepper) followed by the CPF digits. The CPF space is small (~10^9), so the protection depends on the secret not leaking: anyone who holds it can brute-force every CPF in minutes. In production this would be HMAC-SHA256 with the key in a secrets manager. The customers staging model is a table so the secret never appears in a view definition.
+- **Why:** the e-mail is reduced to its domain, the phone to its area code, and the name is dropped. The CPF becomes SHA-256 of a secret (`DBT_PII_SALT`, in effect a pepper) followed by the CPF digits. The CPF space is small (~10^9), so the protection depends on the secret not leaking: anyone who holds it can brute-force every CPF in minutes. The customers staging model is a table so the secret never appears in a view definition. The `target/` folder of a real dbt run keeps the compiled SQL with the secret (local, outside git), the docs service compiles with a placeholder value instead, and in production the hash would run in the database (HMAC with the key held by the server), with no secret in the SQL.
 - **Rejected:** encryption (reversible, needs key management) and masking in the marts (PII would already sit in Silver).
 
 ### D16. Two facts sharing the dimensions
