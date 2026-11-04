@@ -61,7 +61,8 @@ Risk simulation: the PD of an applicant typed into fields generated from the fea
 
 ## Scope
 
-Default is 90+ days past due within the first 12 installments. Only mature contracts get a label.
+Default is 90+ days past due within the first 12 installments, or all of them when the loan has
+fewer. Only mature contracts get a label.
 
 | Domain | Source system | Signals |
 |---|---|---|
