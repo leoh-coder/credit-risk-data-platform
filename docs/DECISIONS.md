@@ -13,7 +13,7 @@ chosen otherwise, the entry also names that alternative and why it was not taken
 - **Why:** one unexported factor drives both the observable signals (income, bureau score, employment, betting and cash-withdrawal behavior) and default, so the model has to learn from observable data, as with a real portfolio. In the training population the default rate is 11.2%: payroll 2.5%, vehicle 8.1%, personal loans 15.6%.
 
 ### D03. Daily batches, deterministic per (seed, reference date, as-of)
-- **Why:** reruns, CI and the whole lake are reproducible byte for byte. `--as-of` freezes the observation clock, so payments after it are not observed (right-censoring is explicit).
+- **Why:** reruns and CI are reproducible. A clone built from scratch reproduces the same data row for row, the marts with the same md5 and `model.joblib` byte for byte; the lake files differ only in metadata (the manifest's `written_at` and `duration_seconds`, and the pyarrow version stamped in each Parquet file). Direct dependencies are pinned; transitive dependencies and base images are not (a lock file and image digests would close that). `--as-of` freezes the observation clock, so payments after it are not observed (right-censoring is explicit).
 - **Limitation:** installments and payments are emitted only in the batch of the contract's origination date, observed up to that batch's `as_of`. In daily mode (`make ingest`, `as_of` = today) no label ever matures; the labels exist because the backfill uses a fixed `as_of`. A real bank would read a daily payments feed (or snapshot the collections system with dbt snapshots) and recompute delinquency incrementally.
 
 ### D04. Open Finance history strictly before the application date
