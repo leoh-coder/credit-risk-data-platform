@@ -160,8 +160,8 @@ refit on train + validation and scored once on the test period.
 On the test period the largest gap between predicted and observed default rate across PD deciles
 is 0.036 for the logistic model and 0.060 for the boosting model. The logistic model was chosen in
 advance for interpretability (odds ratios and an exact explanation per applicant). The boosting model
-is marginally ahead on validation and marginally behind on test; the difference is within noise and
-does not pay for the loss of auditability.
+is 0.002 AUC ahead on validation and 0.003 behind on test; a difference of that size does not pay for
+the loss of auditability.
 
 ## Running locally
 
