@@ -163,6 +163,10 @@ advance for interpretability (odds ratios and an exact explanation per applicant
 is 0.002 AUC ahead on validation and 0.003 behind on test; a difference of that size does not pay for
 the loss of auditability.
 
+Income and the Open Finance inflows and outflows are correlated (Spearman 0.76 to 0.89), so an
+individual odds ratio can have a counterintuitive sign and none of them is causal. The per-applicant
+decomposition is exact for the model, not a causal attribution.
+
 ## Running locally
 
 Requirements: Docker with Compose v2. Python 3.12 is needed only for local tests, and `make` is
@@ -246,6 +250,10 @@ is not trained in CI, because 3 days have no contract old enough to train on.
   tab turns WARN after 2 days and ERROR after 7. That is the intended behavior.
 - The SQL is Postgres-specific in places ([docs/PORTABILITY.md](docs/PORTABILITY.md)).
 - Vehicle financing PD is under-predicted on the test period: mean PD 0.071 against 0.096 observed.
+- The simulator has no drift over time, so the out-of-time split here validates the method, not the
+  model's stability.
+- Left out: monitoring (PSI), recalibration per product (vehicle financing) and reject inference
+  (the simulator has no declined applications).
 
 ## Further reading
 

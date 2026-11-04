@@ -115,7 +115,7 @@ chosen otherwise, the entry also names that alternative and why it was not taken
 - **Rejected:** shipping the boosting model, which is harder to audit and does not beat the logistic model on the test period.
 
 ### D25. Explicit reference categories in the one-hot encoding
-- **Why:** with every level one-hot encoded next to an intercept, category coefficients are not identifiable on their own (L2 only centres them), so an odds ratio per category would mean nothing precise. Each categorical feature drops a declared reference level, `product_type = personal_loan` (largest and riskiest product) and `employment_type = clt` (most common), and its odds ratios read "vs. the reference category". A reference applicant's categorical contribution is exactly zero.
+- **Why:** with every level one-hot encoded next to an intercept, category coefficients are not identifiable on their own (L2 only centres them), so an odds ratio per category would mean nothing precise. Each categorical feature drops a declared reference level, `product_type = personal_loan` (largest and riskiest product) and `employment_type = clt` (most common), and its odds ratios read "vs. the reference category". A reference applicant's categorical contribution is exactly zero. Income and the Open Finance inflows and outflows are correlated (Spearman 0.76 to 0.89), so an individual odds ratio can have a counterintuitive sign and none of them is causal; the per-applicant decomposition is exact for the model, not a causal attribution.
 - **Rejected:** keeping full one-hot and describing the odds ratios as "a category vs. the rest", which they are not.
 
 ### D26. Metrics: AUC, Gini, KS and calibration
