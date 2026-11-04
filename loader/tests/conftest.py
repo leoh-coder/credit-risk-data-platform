@@ -11,6 +11,7 @@ from ingestion.config import Settings as IngestionSettings
 from ingestion.main import run_batch
 from ingestion.writer import LakeWriter
 from psycopg.conninfo import conninfo_to_dict, make_conninfo
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from loader.config import Settings
 
@@ -19,12 +20,47 @@ DAY_2 = date(2026, 1, 2)
 AS_OF = date(2026, 10, 15)
 BUCKET = "credit-risk-lake"
 
-INIT_SQL = Path(__file__).resolve().parents[2] / "infra" / "postgres" / "init.sql"
-# Defaults match .env.example and the compose Postgres; CI overrides it with its service container.
-DEFAULT_ADMIN_DSN = (
-    "host=127.0.0.1 port=5432 dbname=credit_risk_dw user=dw_admin password=change_me_dw_password"
-)
-ADMIN_DSN = os.environ.get("LOADER_TEST_PG_DSN", DEFAULT_ADMIN_DSN)
+ROOT = Path(__file__).resolve().parents[2]
+INIT_SQL = ROOT / "infra" / "postgres" / "init.sql"
+# The compose Postgres publishes its port on this address only.
+ADMIN_HOST = "127.0.0.1"
+
+
+class AdminCredentials(BaseSettings):
+    """The compose admin credentials: environment first, then the root .env; defaults match .env.example."""
+
+    model_config = SettingsConfigDict(env_file_encoding="utf-8", extra="ignore")
+
+    postgres_db: str = "credit_risk_dw"
+    postgres_user: str = "dw_admin"
+    postgres_password: str = "change_me_dw_password"
+
+
+def admin_dsn(env_file: Path = ROOT / ".env") -> str:
+    """LOADER_TEST_PG_DSN wins (CI sets it); otherwise the credentials of the compose Postgres."""
+    explicit = os.environ.get("LOADER_TEST_PG_DSN")
+    if explicit:
+        return explicit
+    credentials = AdminCredentials(_env_file=env_file)
+    return make_conninfo(
+        host=ADMIN_HOST,
+        port=5432,
+        dbname=credentials.postgres_db,
+        user=credentials.postgres_user,
+        password=credentials.postgres_password,
+    )
+
+
+def connection_skip_reason(exc: psycopg.OperationalError) -> str:
+    if "password authentication failed" in str(exc):
+        return (
+            "Postgres refused the credentials: the tests use POSTGRES_USER / POSTGRES_PASSWORD from the "
+            f"environment or the root .env, or LOADER_TEST_PG_DSN ({exc})"
+        )
+    return f"Postgres not reachable, start it with `docker compose up -d --wait` ({exc})"
+
+
+ADMIN_DSN = admin_dsn()
 
 
 @pytest.fixture(scope="session")
@@ -34,7 +70,7 @@ def pg_admin() -> dict:
     except psycopg.OperationalError as exc:
         if os.environ.get("CI"):
             raise  # never let CI go green by skipping the integration tests
-        pytest.skip(f"Postgres not reachable, start it with `docker compose up -d --wait` ({exc})")
+        pytest.skip(connection_skip_reason(exc))
     return conninfo_to_dict(ADMIN_DSN)
 
 

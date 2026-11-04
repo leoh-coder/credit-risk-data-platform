@@ -200,7 +200,8 @@ def model_card(report: dict) -> str:
     return f"""# Model card: probability of default (PD)
 
 - **Trained at:** {report["trained_at"]} (scikit-learn {report["scikit_learn"]})
-- **Target:** `pd_label` = 1 when DPD >= 90 within the first 12 installments (mature contracts only).
+- **Target:** `pd_label` = 1 when DPD >= 90 within the first 12 installments, or all of them when the
+  loan has fewer (mature contracts only).
 - **Population:** {report["population"]}.
 - **Validation:** out of time, never random.
   - Train: {period(split["train"])}.

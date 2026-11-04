@@ -13,7 +13,7 @@ chosen otherwise, the entry also names that alternative and why it was not taken
 - **Why:** one unexported factor drives both the observable signals (income, bureau score, employment, betting and cash-withdrawal behavior) and default, so the model has to learn from observable data, as with a real portfolio. In the training population the default rate is 11.2%: payroll 2.5%, vehicle 8.1%, personal loans 15.6%.
 
 ### D03. Daily batches, deterministic per (seed, reference date, as-of)
-- **Why:** reruns, CI and the whole lake are reproducible byte for byte. `--as-of` freezes the observation clock, so payments after it are not observed (right-censoring is explicit).
+- **Why:** reruns and CI are reproducible. A clone built from scratch reproduces the same data row for row, the marts with the same md5 and `model.joblib` byte for byte; the lake files differ only in metadata (the manifest's `written_at` and `duration_seconds`, and the pyarrow version stamped in each Parquet file). Direct dependencies are pinned; transitive dependencies and base images are not (a lock file and image digests would close that). `--as-of` freezes the observation clock, so payments after it are not observed (right-censoring is explicit).
 - **Limitation:** installments and payments are emitted only in the batch of the contract's origination date, observed up to that batch's `as_of`. In daily mode (`make ingest`, `as_of` = today) no label ever matures; the labels exist because the backfill uses a fixed `as_of`. A real bank would read a daily payments feed (or snapshot the collections system with dbt snapshots) and recompute delinquency incrementally.
 
 ### D04. Open Finance history strictly before the application date
@@ -70,7 +70,7 @@ chosen otherwise, the entry also names that alternative and why it was not taken
 - **Why:** `fct_credit_operations` (one row per contract, with the PD label) and `fct_installments` (collections and aging) have different grains, so each gets its own fact.
 
 ### D17. No imputation of the label
-- **Why:** `pd_label` is NULL with a `label_status` (`immature`, `incomplete_schedule`). The rule is symmetric: a window with a quarantined installment is never labeled, even if a default was observed in it (`has_defaulted_to_date` still records it for monitoring). An earlier version labeled those defaults as 1 while dropping the goods with gaps, which kept 160 extra defaults and raised the training default rate from 11.2% to 12.3%. Delinquency and maturity use the extraction clock, never `current_date`. Window and threshold are dbt vars.
+- **Why:** `pd_label` is NULL with a `label_status` (`immature`, `incomplete_schedule`). The rule is symmetric: a window with a quarantined installment is never labeled, even if a default was observed in it (`has_defaulted_to_date` still records it for monitoring). An earlier version labeled those defaults as 1 while dropping the goods with gaps, which kept 160 extra defaults and raised the training default rate from 11.2% to 12.3%. Delinquency and maturity use the extraction clock, never `current_date`. Window and threshold are dbt vars. The horizon is 12 installments capped at the contract's life, so a 6-installment personal loan is labeled over its whole life; the term is a feature, and that is real risk (less time exposed to default), not an artifact.
 - **Rejected:** treating immature or partially observed contracts as good payers (right-censoring bias), and labeling only the defaults of incomplete windows (selection bias).
 
 ### D18. Portable SQL where a macro exists
@@ -111,11 +111,11 @@ chosen otherwise, the entry also names that alternative and why it was not taken
 - **Rejected:** using the contract rate as a feature because it is known at the grant date.
 
 ### D24. Logistic regression as the main model, one comparison model
-- **Why:** chosen in advance for interpretability, the standard in credit scoring: odds ratios and an exact per-applicant decomposition of the log-odds. Both models are tuned on the validation period (logistic C in {0.1, 1, 10}; boosting depth/leaf in {2/200, 3/100, 4/50}). On validation the boosting model is marginally ahead (AUC 0.832 vs 0.830, KS 0.511 vs 0.500) and on test marginally behind (AUC 0.825 vs 0.828, KS 0.518 vs 0.519); the difference is within noise and does not pay for the loss of auditability.
-- **Rejected:** shipping the boosting model, which is harder to audit for no measurable gain.
+- **Why:** chosen in advance for interpretability, the standard in credit scoring: odds ratios and an exact per-applicant decomposition of the log-odds. Both models are tuned on the validation period (logistic C in {0.1, 1, 10}; boosting depth/leaf in {2/200, 3/100, 4/50}). On validation the boosting model is 0.002 AUC ahead (0.832 vs 0.830, KS 0.511 vs 0.500) and on test 0.003 behind (0.825 vs 0.828, KS 0.518 vs 0.519); a difference of that size does not pay for the loss of auditability.
+- **Rejected:** shipping the boosting model, which is harder to audit and does not beat the logistic model on the test period.
 
 ### D25. Explicit reference categories in the one-hot encoding
-- **Why:** with every level one-hot encoded next to an intercept, category coefficients are not identifiable on their own (L2 only centres them), so an odds ratio per category would mean nothing precise. Each categorical feature drops a declared reference level, `product_type = personal_loan` (largest and riskiest product) and `employment_type = clt` (most common), and its odds ratios read "vs. the reference category". A reference applicant's categorical contribution is exactly zero.
+- **Why:** with every level one-hot encoded next to an intercept, category coefficients are not identifiable on their own (L2 only centres them), so an odds ratio per category would mean nothing precise. Each categorical feature drops a declared reference level, `product_type = personal_loan` (largest and riskiest product) and `employment_type = clt` (most common), and its odds ratios read "vs. the reference category". A reference applicant's categorical contribution is exactly zero. Income and the Open Finance inflows and outflows are correlated (Spearman 0.76 to 0.89), so an individual odds ratio can have a counterintuitive sign and none of them is causal; the per-applicant decomposition is exact for the model, not a causal attribution.
 - **Rejected:** keeping full one-hot and describing the odds ratios as "a category vs. the rest", which they are not.
 
 ### D26. Metrics: AUC, Gini, KS and calibration

@@ -9,6 +9,10 @@ land in an S3-compatible lake behind data contracts, a loader moves them into Po
 builds a tested star schema, and a PD model and a Streamlit dashboard read the result. Everything
 runs locally with Docker Compose.
 
+![Risk simulation tab: an applicant's probability of default, risk band and per-feature contributions](docs/images/dashboard-risk-simulation-top.png)
+
+The risk simulation tab of the dashboard; all three tabs are under [Dashboard](#dashboard).
+
 ```mermaid
 flowchart TB
     subgraph SRC["Source system (synthetic)"]
@@ -61,7 +65,8 @@ Risk simulation: the PD of an applicant typed into fields generated from the fea
 
 ## Scope
 
-Default is 90+ days past due within the first 12 installments. Only mature contracts get a label.
+Default is 90+ days past due within the first 12 installments, or all of them when the loan has
+fewer. Only mature contracts get a label.
 
 | Domain | Source system | Signals |
 |---|---|---|
@@ -159,8 +164,12 @@ refit on train + validation and scored once on the test period.
 On the test period the largest gap between predicted and observed default rate across PD deciles
 is 0.036 for the logistic model and 0.060 for the boosting model. The logistic model was chosen in
 advance for interpretability (odds ratios and an exact explanation per applicant). The boosting model
-is marginally ahead on validation and marginally behind on test; the difference is within noise and
-does not pay for the loss of auditability.
+is 0.002 AUC ahead on validation and 0.003 behind on test; a difference of that size does not pay for
+the loss of auditability.
+
+Income and the Open Finance inflows and outflows are correlated (Spearman 0.76 to 0.89), so an
+individual odds ratio can have a counterintuitive sign and none of them is causal. The per-applicant
+decomposition is exact for the model, not a causal attribution.
 
 ## Running locally
 
@@ -177,14 +186,21 @@ make train                                        # docker compose run --rm --bu
 make dashboard                                    # docker compose --profile app up --build dashboard
 ```
 
+Without `make`, run the command in each comment. The backfill is:
+
+```bash
+docker compose run --rm --build ingestion backfill --start 2024-07-01 --end 2026-10-15 --as-of 2026-10-15
+```
+
 Every port is bound to 127.0.0.1. The dashboard is at http://127.0.0.1:8501, dbt docs
 (`make docs`) at http://127.0.0.1:8080, the SeaweedFS filer at http://127.0.0.1:8888/buckets/ with
 the S3 API on port 8333, and PostgreSQL at `127.0.0.1:5432`, database `credit_risk_dw`.
 
-The full backfill (837 dates, 30 customers a day) takes about 40 minutes on an HDD; a short range
-is enough for everything except training. `make load` is incremental (a second run reports
-`0 loaded, N already up to date`). `make down` keeps the data; `make clean` deletes the volumes.
-`make help` lists the other targets.
+Measured from a fresh clone on an HDD: building the images about 26 minutes, the full backfill
+(837 dates, 30 customers a day) 53 minutes, the load about 20, `dbt build` 4 and training under 2,
+so about 1 h 50 min in total. A short range is enough for everything except training. `make load`
+is incremental (a second run reports `0 loaded, N already up to date`). `make down` keeps the data;
+`make clean` deletes the volumes. `make help` lists the other targets.
 
 Without Docker, `STORAGE_BACKEND=local` writes the lake to `./data/lake`:
 
@@ -204,10 +220,22 @@ pip install -r ingestion/requirements-dev.txt -r loader/requirements-dev.txt \
 make test lint
 ```
 
-pytest runs 29 tests in `ingestion` (including the S3 path against moto), 23 in `loader` (real
-Postgres, a throwaway database per test; skipped locally without Postgres, never in CI), 48 in
-`ml` and 42 in `dashboard` (including the whole app run headless with `AppTest`). CI runs ruff and
-pytest per package, then a Compose smoke run: a 3-day backfill, load, incremental no-op,
+Without `make`, run pytest inside each package and ruff from the root (each package has its own
+ruff settings):
+
+```bash
+(cd ingestion && python -m pytest -q)
+(cd loader && python -m pytest -q)               # needs the compose Postgres (docker compose up -d --wait)
+(cd ml && python -m pytest -q)
+(cd dashboard && python -m pytest -q)
+ruff check ingestion loader ml dashboard && ruff format --check ingestion loader ml dashboard
+```
+
+pytest runs 29 tests in `ingestion` (including the S3 path against moto), 28 in `loader` (real
+Postgres, a throwaway database per test, as `POSTGRES_USER` from the environment or `.env`, or
+`LOADER_TEST_PG_DSN`; skipped locally when Postgres is down or refuses the password, never in CI),
+48 in `ml` and 42 in `dashboard` (including the whole app run headless with `AppTest`). CI runs
+ruff and pytest per package, then a Compose smoke run: a 3-day backfill, load, incremental no-op,
 `dbt build`, freshness, the docs artifact, grants and login roles, the ML population query as
 `ml_reader`, every dashboard query as `dashboard_reader`, and the dashboard health check. The model
 is not trained in CI, because 3 days have no contract old enough to train on.
@@ -226,6 +254,10 @@ is not trained in CI, because 3 days have no contract old enough to train on.
   tab turns WARN after 2 days and ERROR after 7. That is the intended behavior.
 - The SQL is Postgres-specific in places ([docs/PORTABILITY.md](docs/PORTABILITY.md)).
 - Vehicle financing PD is under-predicted on the test period: mean PD 0.071 against 0.096 observed.
+- The simulator has no drift over time, so the out-of-time split here validates the method, not the
+  model's stability.
+- Left out: monitoring (PSI), recalibration per product (vehicle financing) and reject inference
+  (the simulator has no declined applications).
 
 ## Further reading
 

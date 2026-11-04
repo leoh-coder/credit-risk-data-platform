@@ -13,7 +13,7 @@ flags:
   send_anonymous_usage_stats: false
 
 vars:
-  # Default: 90+ days past due within the first 12 installments.
+  # Default: 90+ days past due within the first 12 installments, or all of them when the loan has fewer.
   pd_window_installments: 12
   pd_default_dpd: 90
   # Qualifying rate for reference_installment_to_income_ratio: affordability at a fixed monthly rate, so the
