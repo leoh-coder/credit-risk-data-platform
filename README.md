@@ -9,6 +9,10 @@ land in an S3-compatible lake behind data contracts, a loader moves them into Po
 builds a tested star schema, and a PD model and a Streamlit dashboard read the result. Everything
 runs locally with Docker Compose.
 
+![Risk simulation tab: an applicant's probability of default, risk band and per-feature contributions](docs/images/dashboard-risk-simulation-top.png)
+
+The risk simulation tab of the dashboard; all three tabs are under [Dashboard](#dashboard).
+
 ```mermaid
 flowchart TB
     subgraph SRC["Source system (synthetic)"]
