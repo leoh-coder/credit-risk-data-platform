@@ -205,9 +205,10 @@ pip install -r ingestion/requirements-dev.txt -r loader/requirements-dev.txt \
 make test lint
 ```
 
-pytest runs 29 tests in `ingestion` (including the S3 path against moto), 23 in `loader` (real
-Postgres, a throwaway database per test; skipped locally without Postgres, never in CI), 48 in
-`ml` and 42 in `dashboard` (including the whole app run headless with `AppTest`). CI runs ruff and
+pytest runs 29 tests in `ingestion` (including the S3 path against moto), 28 in `loader` (real
+Postgres, a throwaway database per test, as `POSTGRES_USER` from the environment or `.env`, or
+`LOADER_TEST_PG_DSN`; skipped locally when Postgres is down or refuses the password, never in CI),
+48 in `ml` and 42 in `dashboard` (including the whole app run headless with `AppTest`). CI runs ruff and
 pytest per package, then a Compose smoke run: a 3-day backfill, load, incremental no-op,
 `dbt build`, freshness, the docs artifact, grants and login roles, the ML population query as
 `ml_reader`, every dashboard query as `dashboard_reader`, and the dashboard health check. The model
