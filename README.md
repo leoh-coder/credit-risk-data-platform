@@ -178,14 +178,21 @@ make train                                        # docker compose run --rm --bu
 make dashboard                                    # docker compose --profile app up --build dashboard
 ```
 
+Without `make`, run the command in each comment. The backfill is:
+
+```bash
+docker compose run --rm --build ingestion backfill --start 2024-07-01 --end 2026-10-15 --as-of 2026-10-15
+```
+
 Every port is bound to 127.0.0.1. The dashboard is at http://127.0.0.1:8501, dbt docs
 (`make docs`) at http://127.0.0.1:8080, the SeaweedFS filer at http://127.0.0.1:8888/buckets/ with
 the S3 API on port 8333, and PostgreSQL at `127.0.0.1:5432`, database `credit_risk_dw`.
 
-The full backfill (837 dates, 30 customers a day) takes about 40 minutes on an HDD; a short range
-is enough for everything except training. `make load` is incremental (a second run reports
-`0 loaded, N already up to date`). `make down` keeps the data; `make clean` deletes the volumes.
-`make help` lists the other targets.
+Measured from a fresh clone on an HDD: building the images about 26 minutes, the full backfill
+(837 dates, 30 customers a day) 53 minutes, the load about 20, `dbt build` 4 and training under 2,
+so about 1 h 50 min in total. A short range is enough for everything except training. `make load`
+is incremental (a second run reports `0 loaded, N already up to date`). `make down` keeps the data;
+`make clean` deletes the volumes. `make help` lists the other targets.
 
 Without Docker, `STORAGE_BACKEND=local` writes the lake to `./data/lake`:
 
@@ -205,11 +212,22 @@ pip install -r ingestion/requirements-dev.txt -r loader/requirements-dev.txt \
 make test lint
 ```
 
+Without `make`, run pytest inside each package and ruff from the root (each package has its own
+ruff settings):
+
+```bash
+(cd ingestion && python -m pytest -q)
+(cd loader && python -m pytest -q)               # needs the compose Postgres (docker compose up -d --wait)
+(cd ml && python -m pytest -q)
+(cd dashboard && python -m pytest -q)
+ruff check ingestion loader ml dashboard && ruff format --check ingestion loader ml dashboard
+```
+
 pytest runs 29 tests in `ingestion` (including the S3 path against moto), 28 in `loader` (real
 Postgres, a throwaway database per test, as `POSTGRES_USER` from the environment or `.env`, or
 `LOADER_TEST_PG_DSN`; skipped locally when Postgres is down or refuses the password, never in CI),
-48 in `ml` and 42 in `dashboard` (including the whole app run headless with `AppTest`). CI runs ruff and
-pytest per package, then a Compose smoke run: a 3-day backfill, load, incremental no-op,
+48 in `ml` and 42 in `dashboard` (including the whole app run headless with `AppTest`). CI runs
+ruff and pytest per package, then a Compose smoke run: a 3-day backfill, load, incremental no-op,
 `dbt build`, freshness, the docs artifact, grants and login roles, the ML population query as
 `ml_reader`, every dashboard query as `dashboard_reader`, and the dashboard health check. The model
 is not trained in CI, because 3 days have no contract old enough to train on.
