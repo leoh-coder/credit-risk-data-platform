@@ -50,7 +50,8 @@ for d in expected_dates:
         rows = pq.read_metadata(part, filesystem=s3).num_rows
         if not 0 < rows == stats["rows_valid"]:
             errors.append(f"{d} {entity}: parquet rows={rows}, manifest rows_valid={stats['rows_valid']}")
-        # Deterministic generator: every quarantined row must be one we injected, and vice versa.
+        # Deterministic generator: on the CI dates every quarantined row is one we injected, and vice versa.
+        # Not true of the whole history: a few generated customers are days short of 18 (DECISIONS D05).
         quarantined, injected = stats["rows_quarantined"], stats["anomalies_injected"]
         if quarantined != injected:
             errors.append(f"{d} {entity}: quarantined={quarantined} != injected={injected}")

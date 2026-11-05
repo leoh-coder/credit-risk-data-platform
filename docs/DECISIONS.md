@@ -23,6 +23,7 @@ chosen otherwise, the entry also names that alternative and why it was not taken
 - **Why:** bad data is stopped and explained before it reaches the warehouse.
   - `strict=True` rejects the whole batch when a column is added or missing, so column drift requires a new contract version. `coerce=True` converts compatible types in silence (the string `"123.4"` becomes a float), so type drift that can be coerced passes.
   - Row violations go to `quarantine/` with `_failure_reasons`; duplicated keys keep the first occurrence.
+  - The generator computes ages with 365-day years, so 13 of the 25,230 generated customers are born a few days short of 18 and the contract quarantines them. This was kept so that the published dataset does not change.
   - Circuit breaker: the batch is rejected only if invalid rows exceed 10% of the entity and 5 rows. The absolute floor keeps a few bad rows in a small batch (30 customers) from rejecting it.
 - **Rejected:** validating only in dbt (bad rows would already have landed), and a ratio-only breaker, which permanently rejected 2% of dates on small batches.
 
@@ -56,7 +57,7 @@ chosen otherwise, the entry also names that alternative and why it was not taken
 ## Warehouse (dbt)
 
 ### D13. Medallion layers mapped to schemas
-- **Why:** Bronze = lake + `raw`; Silver = dbt `stg_` + `int_` (typing, joins, business rules, PII masking); Gold = `marts` as a star schema. Staging (`stg_core_banking__*`, `stg_open_finance__transactions`) and intermediate (`int_installments__delinquency`, `int_credit_operations__performance`, `int_customers__open_finance_features`) are views; the marts are tables. One schema per layer gives clear ownership and lets grants follow the layers.
+- **Why:** Bronze = lake + `raw`; Silver = dbt `stg_` + `int_` (typing, joins, business rules, PII masking); Gold = `marts` as a star schema. Staging (`stg_core_banking__*`, `stg_open_finance__transactions`) and intermediate (`int_installments__delinquency`, `int_credit_operations__performance`, `int_customers__open_finance_features`) are views, except the customers staging model, which is a table (D15); the marts are tables. One schema per layer gives clear ownership and lets grants follow the layers.
 
 ### D14. Unknown member (`'-1'`) instead of dropping orphans
 - **Why:** row-level quarantine can drop a parent while its children survive. Facts keep every raw row and point orphans to the unknown member, so totals reconcile with the source and the gap stays visible. The model excludes these rows.
@@ -106,7 +107,7 @@ chosen otherwise, the entry also names that alternative and why it was not taken
 - **Why:**
   - **No feature may carry the bank's own price.** `interest_rate_monthly` comes from risk-based pricing on the bureau score: a model trained on it learns the bank's previous decisions (feedback loop) and drifts whenever pricing changes. Since installment = principal x annuity(rate, term), the installment, its ratio to income and `total_scheduled_amount` would let the model recover the rate, so they are excluded too (`PRICE_DEPENDENT_COLUMNS`); an earlier version kept them, which undid the exclusion of the rate.
   - **Affordability without the price.** `reference_installment_to_income_ratio` is the installment at a fixed qualifying rate (dbt var `reference_rate_monthly` = 3% a month, at or above every payroll and vehicle contract rate) over income, in the spirit of a stress-test qualifying rate. It depends on principal, term and income only.
-  - **Known residual.** For 543 of 6,681 payroll loans (8%) the source capped the principal with the 35% income-commitment rule, which uses the contract rate, so the principal itself carries some rate information for those loans. Removing it would need the requested (pre-cap) amount, which the source does not provide.
+  - **Known residual.** For 527 of 6,681 payroll loans (7.9%) the source capped the principal with the 35% income-commitment rule, which uses the contract rate, so the principal itself carries some rate information for those loans. Removing it would need the requested (pre-cap) amount, which the source does not provide.
   - **Proxies.** `email_domain`, `phone_area_code` and `state_code` are socio-economic or geographic proxies; the source assigns the state independently of risk. The exclusion rests on that argument, not on model results.
 - **Rejected:** using the contract rate as a feature because it is known at the grant date.
 
