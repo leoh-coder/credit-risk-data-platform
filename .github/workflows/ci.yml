@@ -64,6 +64,9 @@ jobs:
       - name: Pytest
         run: python -m pytest -q
 
+      - name: README test count matches pytest
+        run: python ../.github/scripts/check_readme_counts.py pytest ${{ matrix.package }}
+
   # The README installs every dev requirement list into one environment, so pip must find one solution.
   dev-requirements:
     name: Dev requirements resolve together
@@ -142,7 +145,12 @@ jobs:
           grep -q "done: 0 loaded, 3 already up to date, 0 failed" load2.log
 
       - name: Transform with dbt (models, unit tests, data tests, contracts)
-        run: docker compose run --rm --build dbt build
+        run: |
+          set -o pipefail
+          docker compose run --rm --build dbt build 2>&1 | tee dbt-build.log
+
+      - name: README node count matches dbt build
+        run: python3 .github/scripts/check_readme_counts.py dbt dbt-build.log
 
       - name: Source freshness
         run: docker compose run --rm dbt source freshness
