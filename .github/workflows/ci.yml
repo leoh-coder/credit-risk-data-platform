@@ -148,10 +148,14 @@ jobs:
         run: docker compose run --rm dbt source freshness
 
       - name: Generate dbt docs (single static HTML)
+        # The dbt-docs service compiles with a placeholder salt, so the published HTML never depends on .env.
         run: |
-          docker compose run --name dbt-docs-gen dbt docs generate --static
+          docker compose run --name dbt-docs-gen --entrypoint dbt dbt-docs docs generate --static
           docker cp dbt-docs-gen:/app/credit_risk/target/static_index.html ./dbt-docs.html
           docker rm dbt-docs-gen
+          salt=$(sed -n 's/^DBT_PII_SALT=//p' .env)
+          test -n "$salt"
+          if grep -qF "$salt" dbt-docs.html; then echo "dbt-docs.html contains the .env DBT_PII_SALT"; exit 1; fi
 
       - name: Upload dbt docs
         uses: actions/upload-artifact@v7
