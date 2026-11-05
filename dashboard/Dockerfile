@@ -23,5 +23,6 @@ EXPOSE 8501
 HEALTHCHECK --interval=10s --timeout=3s --retries=12 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health', timeout=2)"
 
+# The address shown is the published port; without it, a headless Streamlit looks up the public IP at startup.
 CMD ["python", "-m", "streamlit", "run", "src/dashboard/app.py", "--server.port=8501", "--server.address=0.0.0.0", \
-     "--server.headless=true", "--browser.gatherUsageStats=false"]
+     "--server.headless=true", "--browser.gatherUsageStats=false", "--browser.serverAddress=127.0.0.1"]
