@@ -80,12 +80,15 @@ class Lake:
 
     def read_manifest(self, reference_date: date) -> CommittedBatch | None:
         """None when the date is not committed (never landed, or a rerun is in flight); LoadError when the
-        manifest is malformed or does not list exactly the allow-listed entities."""
+        manifest cannot be read, is malformed or does not list exactly the allow-listed entities."""
         path = quote_literal(self.manifest_path(reference_date))
         try:
             content = self.con.execute(f"SELECT content FROM read_text({path})").fetchone()
-        except duckdb.IOException:
-            return None
+        except duckdb.IOException as exc:
+            # A missing file is no rows on a local disk but HTTP 404 on S3; any other error is a failure.
+            if getattr(exc, "status_code", None) == 404:
+                return None
+            raise LoadError(f"{reference_date}: could not read the manifest ({exc})") from exc
         if content is None:
             return None
         text = content[0]

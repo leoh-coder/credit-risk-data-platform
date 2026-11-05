@@ -6,10 +6,11 @@ import duckdb
 import psycopg
 import pytest
 
+from loader import main as loader_main
 from loader.lake import Lake
 from loader.main import run
 from loader.warehouse import Warehouse
-from tests.conftest import DAY_1, DAY_2, edit_manifest, manifest_file, query
+from tests.conftest import DAY_1, DAY_2, ManifestReadFails, edit_manifest, manifest_file, query
 
 ENTITIES = ("customers", "credit_operations", "installments", "transactions")
 
@@ -211,6 +212,23 @@ def test_malformed_manifest_leaves_the_date_pending(settings, lake_path):
     assert report.loaded == [DAY_1]
     assert report.failed == [DAY_2]
     assert raw_rows(settings, "customers", DAY_2) == 0
+
+
+def test_unreadable_manifest_fails_the_date_and_the_run(settings, monkeypatch):
+    class LakeWithUnreadableDay2(Lake):
+        def __init__(self, con, root):
+            error = duckdb.IOException("simulated outage while reading the manifest")
+            super().__init__(ManifestReadFails(con, DAY_2, error), root)
+
+    monkeypatch.setattr(loader_main, "Lake", LakeWithUnreadableDay2)
+    monkeypatch.setattr(loader_main, "get_settings", lambda: settings)
+
+    report = run(settings)
+
+    assert report.loaded == [DAY_1]
+    assert report.failed == [DAY_2]  # reported, not skipped as if it were not committed
+    assert raw_rows(settings, "customers", DAY_2) == 0
+    assert loader_main.main(["run"]) == 1  # DAY_1 is up to date, DAY_2 fails again
 
 
 def test_a_bug_in_the_loader_is_raised_not_kept_as_a_pending_date(settings, monkeypatch):

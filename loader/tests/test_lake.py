@@ -6,7 +6,7 @@ import pytest
 
 from loader.lake import ENTITIES, Lake, LoadError
 from loader.sql import quote_literal
-from tests.conftest import BUCKET, DAY_1, DAY_2, edit_manifest, manifest_file
+from tests.conftest import BUCKET, DAY_1, DAY_2, ManifestReadFails, edit_manifest, http_error, manifest_file
 
 # Every entity is listed, so validation reaches the row counts: one of them is a string.
 STRING_ROW_COUNT = json.dumps(
@@ -43,6 +43,23 @@ def test_read_manifest_versions_the_commit_by_content_hash(lake, lake_path):
 def test_read_manifest_of_uncommitted_date_is_none(lake, lake_path):
     manifest_file(lake_path, DAY_2).unlink()
     assert lake.read_manifest(DAY_2) is None
+
+
+def test_manifest_missing_on_s3_is_an_uncommitted_date(lake):
+    # S3 answers a manifest deleted after the listing (an ingestion rerun started) with 404, not 0 rows.
+    s3_lake = Lake(ManifestReadFails(lake.con, DAY_1, http_error(404)), lake.root)
+    assert s3_lake.read_manifest(DAY_1) is None
+
+
+@pytest.mark.parametrize(
+    "error",
+    [duckdb.IOException("Could not connect to server"), http_error(403), http_error(503)],
+    ids=["unreachable", "http-403", "http-503"],
+)
+def test_unreadable_manifest_raises_a_load_error(lake, error):
+    failing_lake = Lake(ManifestReadFails(lake.con, DAY_1, error), lake.root)
+    with pytest.raises(LoadError, match="could not read the manifest"):
+        failing_lake.read_manifest(DAY_1)
 
 
 def test_manifest_entities_must_be_exactly_the_allow_listed_ones(lake, lake_path):

@@ -5,6 +5,7 @@ import uuid
 from datetime import date
 from pathlib import Path
 
+import duckdb
 import psycopg
 import pytest
 from ingestion.config import Settings as IngestionSettings
@@ -138,3 +139,23 @@ def edit_manifest(lake_path: Path, day: date, change) -> None:
     manifest = json.loads(path.read_text())
     change(manifest)
     path.write_text(json.dumps(manifest, indent=2))
+
+
+class ManifestReadFails:
+    """DuckDB connection whose read of one date's manifest raises `error`; every other query runs as usual."""
+
+    def __init__(self, con, day: date, error: Exception):
+        self._con, self._error = con, error
+        self._manifest = f"reference_date={day.isoformat()}/manifest.json"
+
+    def execute(self, query: str, *args):
+        if "read_text" in query and self._manifest in query:
+            raise self._error
+        return self._con.execute(query, *args)
+
+
+def http_error(status: int) -> duckdb.HTTPException:
+    """What httpfs raises when S3 answers with an error status (a missing object is a 404)."""
+    error = duckdb.HTTPException(f"HTTP {status}")
+    error.status_code = status
+    return error

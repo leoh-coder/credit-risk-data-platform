@@ -182,8 +182,10 @@ make up                                           # docker compose up -d --wait
 make backfill                                     # 2024-07-01..2026-10-15, as of 2026-10-15
 make load                                         # docker compose run --rm --build loader run
 make transform                                    # docker compose run --rm --build dbt build
+make freshness                                    # docker compose run --rm --build dbt source freshness
 make train                                        # docker compose run --rm --build ml
 make dashboard                                    # docker compose --profile app up --build dashboard
+make docs                                         # docker compose --profile docs up --build dbt-docs
 ```
 
 Without `make`, run the command in each comment. The backfill is:
@@ -196,11 +198,10 @@ Every port is bound to 127.0.0.1. The dashboard is at http://127.0.0.1:8501, dbt
 (`make docs`) at http://127.0.0.1:8080, the SeaweedFS filer at http://127.0.0.1:8888/buckets/ with
 the S3 API on port 8333, and PostgreSQL at `127.0.0.1:5432`, database `credit_risk_dw`.
 
-Measured from a fresh clone on an HDD: building the images about 26 minutes, the full backfill
-(837 dates, 30 customers a day) 53 minutes, the load about 20, `dbt build` 4 and training under 2,
-so about 1 h 50 min in total. A short range is enough for everything except training. `make load`
-is incremental (a second run reports `0 loaded, N already up to date`). `make down` keeps the data;
-`make clean` deletes the volumes. `make help` lists the other targets.
+From a fresh clone, the full run (837 dates, 30 customers a day) takes about 2 to 2.5 hours on an
+HDD, most of it building the images and running the backfill. A short range is enough for everything
+except training. `make load` is incremental (a second run reports `0 loaded, N already up to date`).
+`make down` keeps the data; `make clean` deletes the volumes. `make help` lists the other targets.
 
 Without Docker, `STORAGE_BACKEND=local` writes the lake to `./data/lake`:
 
@@ -231,10 +232,10 @@ ruff settings):
 ruff check ingestion loader ml dashboard && ruff format --check ingestion loader ml dashboard
 ```
 
-pytest runs 29 tests in `ingestion` (including the S3 path against moto), 28 in `loader` (real
+pytest runs 29 tests in `ingestion` (including the S3 path against moto), 33 in `loader` (real
 Postgres, a throwaway database per test, as `POSTGRES_USER` from the environment or `.env`, or
 `LOADER_TEST_PG_DSN`; skipped locally when Postgres is down or refuses the password, never in CI),
-48 in `ml` and 42 in `dashboard` (including the whole app run headless with `AppTest`). CI runs
+49 in `ml` and 43 in `dashboard` (including the whole app run headless with `AppTest`). CI runs
 ruff and pytest per package, then a Compose smoke run: a 3-day backfill, load, incremental no-op,
 `dbt build`, freshness, the docs artifact, grants and login roles, the ML population query as
 `ml_reader`, every dashboard query as `dashboard_reader`, and the dashboard health check. The model

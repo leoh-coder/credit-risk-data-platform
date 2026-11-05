@@ -16,7 +16,7 @@ What is still Postgres-specific, and the usual Amazon Redshift equivalent:
 | `sha256()` + `convert_to()` + `encode(..., 'hex')` | `stg_core_banking__customers` (CPF hash) | `SHA2(expr, 256)` |
 | `age()` with `date_part('year', ...)` | `dim_customers` (age at registration) | `DATEDIFF(year, ...)` plus a birthday adjustment (no `AGE`) |
 | `extract(isodow ...)` | `dim_date` | `DATE_PART(dow, ...)` (Sunday = 0), remapped to ISO |
-| Regex class `\D` in `regexp_replace` | `stg_core_banking__customers` | An explicit class such as `[^0-9]` |
+| Regex class `\D` and the `'g'` flag in `regexp_replace` | `stg_core_banking__customers` | An explicit class such as `[^0-9]` and no flag: Redshift replaces every match by default, and its fourth argument is a position |
 | `interval '...'` literals in date arithmetic | `int_customers__open_finance_features` (history window), `dim_date` (calendar end bound, month end) | `dbt.dateadd`, as the other models already use, or `DATEADD` |
 | Enforced `PRIMARY KEY` from dbt contracts | every mart | Redshift enforces `NOT NULL` only; primary keys are informational, so the dbt `unique` tests remain the real guard |
 | `text` columns in the mart contracts (`data_type: text`) | every mart | Redshift stores `TEXT` as `VARCHAR(256)`: declare explicit `VARCHAR` lengths |

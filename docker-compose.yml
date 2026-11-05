@@ -33,6 +33,7 @@ services:
   seaweedfs:
     image: chrislusf/seaweedfs:${SEAWEEDFS_VERSION:-4.48}
     restart: unless-stopped
+    stop_grace_period: 60s   # flush to disk on `docker compose stop` instead of being killed at the default timeout
     environment:
       LAKE_ACCESS_KEY: ${LAKE_ACCESS_KEY:?set LAKE_ACCESS_KEY in .env}
       LAKE_SECRET_KEY: ${LAKE_SECRET_KEY:?set LAKE_SECRET_KEY in .env}
@@ -59,6 +60,7 @@ services:
   postgres:
     image: postgres:17-alpine
     restart: unless-stopped
+    stop_grace_period: 60s   # a clean shutdown (checkpoint) instead of crash recovery on the next start
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-credit_risk_dw}
       POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
@@ -145,6 +147,8 @@ services:
       POSTGRES_PORT: 5432
       POSTGRES_DB: ${POSTGRES_DB:-credit_risk_dw}
       ML_READER_PASSWORD: ${ML_READER_PASSWORD:?set ML_READER_PASSWORD in .env}
+      VALIDATION_MONTHS: ${VALIDATION_MONTHS:-3}
+      TEST_MONTHS: ${TEST_MONTHS:-3}
     volumes:
       - ml-artifacts:/artifacts
     depends_on:
